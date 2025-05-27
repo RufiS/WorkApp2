@@ -1,0 +1,18 @@
+{"timestamp": "2025-05-22T19:48:06.275161", "query": "How do I create a customer concern?", "latency": 41.2794, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-22T19:51:16.738201", "query": "How do I create a customer concern?", "latency": 0.0184, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-22T19:51:37.332343", "query": "How do I create a customer concern?", "latency": 0.0202, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-22T19:51:59.327341", "query": "How do I create a customer concern?", "latency": 0.0133, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-22T19:52:05.150696", "query": "How do I create a customer concern?", "latency": 0.017, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-22T19:52:14.680016", "query": "How do I create a customer concern?", "latency": 0.0185, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-22T19:53:02.943866", "query": "What is our Tampa phone number?", "latency": 0.0158, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-22T19:53:44.184114", "query": "What is our Tampa metro phone number?", "latency": 0.015, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-23T00:42:30.021321", "query": "How do I inform a FE to call a customer?", "latency": 38.1695, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-23T00:44:19.339047", "query": "How do I inform a FE to call a customer?", "latency": 0.3032, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-23T00:44:28.158431", "query": "How do I inform a FE to call a customer?", "latency": 0.0106, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-23T00:44:34.155834", "query": "How do I inform a FE to call a customer?", "latency": 0.0137, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-23T00:44:43.108938", "query": "How do I inform a FE to call a customer?", "latency": 0.0093, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-23T00:44:56.183449", "query": "How do I inform a FE to call a customer?", "latency": 0.0138, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-23T00:45:06.048287", "query": "How do I inform a FE to call a customer?", "latency": 0.0123, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-23T18:07:39.236460", "query": "How do I create a customer concern?", "latency": 39.2903, "hit_count": 1, "metadata": {"search_type": "vector", "top_k": 1, "fallback_used": false}}
+{"timestamp": "2025-05-23T22:04:54.868317", "query": "How do I create a customer concern?", "latency": 38.8805, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}
+{"timestamp": "2025-05-23T22:06:00.954256", "query": "How do I create a customer concern?", "latency": 0.0213, "hit_count": 50, "metadata": {"search_type": "vector", "top_k": 50, "fallback_used": false}}

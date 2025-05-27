@@ -1,0 +1,23 @@
+{
+  "github.copilot.enable":              true,
+  "github.copilot.chat.enable":         true,
+  "github.copilot.chat.agentEnabled":        true,
+  "github.copilot.chat.mcpDiscoveryEnabled": true,
+  //"github.copilot.chat.agentEndpoint":  "http://192.168.254.204:3000",
+  "github.copilot.chat.showChatView":       true,
+  "chat.tools.autoApprove": true,
+  "github.copilot.chat.agent.autoFix": true,
+  // If true, the MCP tool calls will be automatially executed by the Agent
+  "abacus.mcp.autoRun": true,
+
+  // If true, the MCP servers will be automatically started when the workspace is opened.
+  "abacus.mcp.autoStartOnOpen": true,
+
+// If true, the MCP servers will be enabled.
+  "abacus.mcp.enabled": true,
+
+// If true, the MCP servers will be discovered outside of the workspace and CodeLLM config. e.g. from Claude Desktop app config.
+  "abacus.mcp.server.externalDiscovery": true,
+}
+
+

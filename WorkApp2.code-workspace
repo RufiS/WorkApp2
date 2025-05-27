@@ -1,0 +1,66 @@
+{
+    "folders": [
+        { "path": "/home/house/llm/WorkApp2" }
+    ],
+    "extensions": {
+        "recommendations": [
+            "huggingface.huggingface-vscode",
+            "github.copilot",
+            "github.copilot-chat"
+        ]
+    },
+    "settings": {
+        "vscode-mcp.experimental.agentWorkspace": true,
+        "vscode-mcp.agent.endpoint": "http://192.168.254.204:3000",
+        "vscode-mcp.trace.server": "messages",
+        "github.copilot.advanced": { "model": "mcp" },
+        "vscode-ollama.baseUrl": "http://192.168.254.204:11434",
+        "github.copilot.chat.byok.ollamaEndpoint": "http://192.168.254.204:11434"
+    },
+    "tasks": {
+        "version": "2.0.0",
+        "tasks": [
+            {
+                "label": "Run Streamlit Container",
+                "type": "shell",
+                "command": "docker",
+                "args": [
+                    "run", "--rm", "-d",
+                    "-p", "8501:8501",
+                    "-p", "5678:5678",
+                    "-v", "/home/house/llm:/workspace/llm",
+                    "--name", "llm-dev",
+                    "workapp2:latest",
+                    "bash", "-lc",
+                    "export PATH=/workspace/llm/.venv/bin:$PATH && export LD_LIBRARY_PATH=/opt/intel/oneapi/mkl/2025.1/lib:/usr/lib/x86_64-linux-gnu:/workspace/llm/.venv/lib:$LD_LIBRARY_PATH && source /workspace/llm/.venv/bin/activate && cd /workspace/llm/WorkApp2 && streamlit run workapp2.py --server.port 8501 --server.address 0.0.0.0"
+                ],
+                "isBackground": true,
+                "problemMatcher": [
+                    {
+                        "owner": "streamlit",
+                        "pattern": { "regexp": "You can now view your Streamlit app in your browser\\." },
+                        "background": {
+                            "activeOnStart": true,
+                            "beginsPattern": "export LD_LIBRARY_PATH",
+                            "endsPattern": "You can now view your Streamlit app in your browser\\."
+                        }
+                    }
+                ]
+            }
+        ]
+    },
+    "launch": {
+        "version": "0.2.0",
+        "configurations": [
+            {
+                "name": "Attach to Streamlit in Docker",
+                "type": "debugpy",
+                "request": "attach",
+                "connect": { "host": "localhost", "port": 5678 },
+                "pathMappings": [
+                    { "localRoot": "/home/house/llm", "remoteRoot": "/workspace/llm" }
+                ]
+            }
+        ]
+    }
+}

@@ -1,0 +1,15 @@
+{
+  "enable_query_cache": true,
+  "query_cache_size": 50,
+  "enable_chunk_cache": true,
+  "chunk_cache_size": 100,
+  "embedding_batch_size": 128,
+  "llm_batch_size": 5,
+  "enable_faiss_optimization": true,
+  "use_gpu_for_faiss": true,
+  "extract_pdf_hyperlinks": true,
+  "enable_reranking": false,
+  "enable_keyword_fallback": true,
+  "log_query_metrics": true,
+  "log_zero_hit_queries": true
+}
