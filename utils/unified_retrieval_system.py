@@ -200,7 +200,14 @@ class UnifiedRetrievalSystem:
                 log_error(error_msg, include_traceback=False)
             except ImportError:
                 # Fallback to simple file logging if error_logging module is not available
-                with open("/tmp/workapp2_errors.log", "a") as error_log:
+                try:
+                    from utils.config_unified import resolve_path
+                    fallback_log_path = resolve_path("./logs/workapp_errors.log", create_dir=True)
+                except ImportError:
+                    fallback_log_path = "./logs/workapp_errors.log"
+                    os.makedirs(os.path.dirname(fallback_log_path), exist_ok=True)
+                
+                with open(fallback_log_path, "a") as error_log:
                     error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - WARNING - {error_msg}\n")
         
         # Return formatted context, retrieval time, number of chunks, and retrieval scores

@@ -57,7 +57,7 @@ def save_index(index: Any, texts: list, gpu_available: bool = False, index_path:
         "created_at": time.time(),
         "embedder": retrieval_config.embedding_model
     }
-    with open(f"{resolved_index_path}/metadata.json", "w") as f:
+    with open(os.path.join(resolved_index_path, "metadata.json"), "w") as f:
         json.dump(metadata, f)
         
     # Save chunk information to a file in the current_index folder
@@ -65,12 +65,12 @@ def save_index(index: Any, texts: list, gpu_available: bool = False, index_path:
     if chunks_dir and texts and len(texts) > 0:
         try:
             os.makedirs(chunks_dir, exist_ok=True)
-            with open(f"{chunks_dir}/chunks.txt", "w") as f:
+            with open(os.path.join(chunks_dir, "chunks.txt"), "w") as f:
                 for i, chunk in enumerate(texts):
                     f.write(f"Chunk {i}:\n{chunk}\n\n")
-            logger.info(f"Saved chunks to {chunks_dir}/chunks.txt")
+            logger.info(f"Saved chunks to {os.path.join(chunks_dir, 'chunks.txt')}")
         except Exception as e:
-            logger.warning(f"Failed to save chunks to {chunks_dir}/chunks.txt: {str(e)}")
+            logger.warning(f"Failed to save chunks to {os.path.join(chunks_dir, 'chunks.txt')}: {str(e)}")
     
     # Ensure the index is a CPU index before saving
     if gpu_available:
@@ -78,15 +78,15 @@ def save_index(index: Any, texts: list, gpu_available: bool = False, index_path:
     else:
         cpu_idx = index
     
-    faiss.write_index(cpu_idx, f"{resolved_index_path}/index.faiss")
-    np.save(f"{resolved_index_path}/texts.npy", np.array(texts, dtype=object), allow_pickle=True)
+    faiss.write_index(cpu_idx, os.path.join(resolved_index_path, "index.faiss"))
+    np.save(os.path.join(resolved_index_path, "texts.npy"), np.array(texts, dtype=object), allow_pickle=True)
     logger.info(f"Index saved to {resolved_index_path}")
     
     # Update cache
     cache_key = resolved_index_path
     _index_cache[cache_key] = index
     _texts_cache[cache_key] = texts
-    _last_modified_time[cache_key] = os.path.getmtime(f"{resolved_index_path}/index.faiss")
+    _last_modified_time[cache_key] = os.path.getmtime(os.path.join(resolved_index_path, "index.faiss"))
     
 def get_index_modified_time(index_path: Optional[str] = None) -> float:
     """
@@ -104,7 +104,7 @@ def get_index_modified_time(index_path: Optional[str] = None) -> float:
     # Resolve the path
     resolved_index_path = resolve_path(index_path)
         
-    index_file = f"{resolved_index_path}/index.faiss"
+    index_file = os.path.join(resolved_index_path, "index.faiss")
     if os.path.exists(index_file):
         return os.path.getmtime(index_file)
     return 0
@@ -131,9 +131,9 @@ def load_index(gpu_available: bool = False, index_path: Optional[str] = None, fo
     resolved_index_path = resolve_path(index_path)
         
     # Check if index files exist
-    index_file = f"{resolved_index_path}/index.faiss"
-    texts_file = f"{resolved_index_path}/texts.npy"
-    metadata_file = f"{resolved_index_path}/metadata.json"
+    index_file = os.path.join(resolved_index_path, "index.faiss")
+    texts_file = os.path.join(resolved_index_path, "texts.npy")
+    metadata_file = os.path.join(resolved_index_path, "metadata.json")
     
     if not os.path.exists(index_file) or not os.path.exists(texts_file):
         logger.warning(f"Index files not found at {resolved_index_path}")
@@ -189,7 +189,7 @@ def _load_index_from_disk(gpu_available: bool = False, index_path: Optional[str]
     # Resolve the path
     resolved_index_path = resolve_path(index_path, create_dir=True)
         
-    lock_file = f"{resolved_index_path}/index.lock"
+    lock_file = os.path.join(resolved_index_path, "index.lock")
     lock_fd = None
     
     try:
@@ -214,8 +214,8 @@ def _load_index_from_disk(gpu_available: bool = False, index_path: Optional[str]
                 
         # Load the index
         logger.info("Lock acquired, loading index")
-        index_file = f"{resolved_index_path}/index.faiss"
-        texts_file = f"{resolved_index_path}/texts.npy"
+        index_file = os.path.join(resolved_index_path, "index.faiss")
+        texts_file = os.path.join(resolved_index_path, "texts.npy")
         
         # Check if index file exists
         if not os.path.exists(index_file):
@@ -270,7 +270,7 @@ def _load_index_from_disk(gpu_available: bool = False, index_path: Optional[str]
                     
                     # Create chunks file if it doesn't exist
                     chunks_dir = resolve_path("current_index", create_dir=True)
-                    chunks_path = f"{chunks_dir}/chunks.txt"
+                    chunks_path = os.path.join(chunks_dir, "chunks.txt")
                     if not os.path.exists(chunks_path) and texts and len(texts) > 0:
                         try:
                             os.makedirs(chunks_dir, exist_ok=True)
@@ -367,7 +367,7 @@ def clear_index(rebuild_immediately: bool = True, embedder: Any = None, gpu_avai
             logger.info(f"[DRY RUN] Empty index rebuilt in memory for {resolved_index_path}")
         return
         
-    lock_file = f"{resolved_index_path}/index.lock"
+    lock_file = os.path.join(resolved_index_path, "index.lock")
     lock_fd = None
     
     try:
@@ -401,10 +401,10 @@ def clear_index(rebuild_immediately: bool = True, embedder: Any = None, gpu_avai
             
         # Remove index files
         try:
-            if os.path.exists(f"{resolved_index_path}/index.faiss"):
-                os.remove(f"{resolved_index_path}/index.faiss")
-            if os.path.exists(f"{resolved_index_path}/texts.npy"):
-                os.remove(f"{resolved_index_path}/texts.npy")
+            if os.path.exists(os.path.join(resolved_index_path, "index.faiss")):
+                os.remove(os.path.join(resolved_index_path, "index.faiss"))
+            if os.path.exists(os.path.join(resolved_index_path, "texts.npy")):
+                os.remove(os.path.join(resolved_index_path, "texts.npy"))
             logger.info(f"Index files removed from {resolved_index_path}")
             
             # Rebuild empty index if requested
@@ -489,8 +489,8 @@ def index_exists(index_path: Optional[str] = None) -> bool:
     # Resolve the path
     resolved_index_path = resolve_path(index_path)
         
-    index_file = f"{resolved_index_path}/index.faiss"
-    texts_file = f"{resolved_index_path}/texts.npy"
+    index_file = os.path.join(resolved_index_path, "index.faiss")
+    texts_file = os.path.join(resolved_index_path, "texts.npy")
     
     return os.path.exists(index_file) and os.path.exists(texts_file)
 
@@ -527,9 +527,9 @@ def get_index_stats(index_path: Optional[str] = None, texts: Optional[List[str]]
     }
     
     # Get file sizes if they exist
-    index_file = f"{resolved_index_path}/index.faiss"
-    texts_file = f"{resolved_index_path}/texts.npy"
-    metadata_file = f"{resolved_index_path}/metadata.json"
+    index_file = os.path.join(resolved_index_path, "index.faiss")
+    texts_file = os.path.join(resolved_index_path, "texts.npy")
+    metadata_file = os.path.join(resolved_index_path, "metadata.json")
     
     if os.path.exists(index_file):
         stats["size_bytes"] += os.path.getsize(index_file)
@@ -585,7 +585,7 @@ def get_saved_chunk_params(index_path: Optional[str] = None) -> Tuple[int, int]:
     # Resolve the path
     resolved_index_path = resolve_path(index_path, create_dir=True)
         
-    metadata_file = f"{resolved_index_path}/metadata.json"
+    metadata_file = os.path.join(resolved_index_path, "metadata.json")
     try:
         if os.path.exists(metadata_file):
             with open(metadata_file, "r") as f:

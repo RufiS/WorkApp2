@@ -347,7 +347,15 @@ def with_robust_error_handling(log_to_central: bool = True,
                         logger.warning("Could not import log_error function from utils.error_logging")
                         # Fallback to simple file logging
                         try:
-                            with open('error_log.txt', 'a') as f:
+                            try:
+                                from utils.config_unified import resolve_path
+                                fallback_log_path = resolve_path("./logs/workapp_errors.log", create_dir=True)
+                            except ImportError:
+                                fallback_log_path = "./logs/workapp_errors.log"
+                                import os
+                                os.makedirs(os.path.dirname(fallback_log_path), exist_ok=True)
+                            
+                            with open(fallback_log_path, 'a') as f:
                                 f.write(f"{time.time()}: {error_msg}\n")
                                 if include_traceback:
                                     f.write(f"Traceback:\n{traceback.format_exc()}\n")

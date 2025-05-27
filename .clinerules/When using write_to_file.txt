@@ -1,0 +1,2 @@
+Before using write_to_file always make a .old version of the file first.  
+After using write_to_file always compare the two and use the data to fix early file truncations

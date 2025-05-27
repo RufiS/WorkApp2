@@ -122,8 +122,8 @@ def get_index_stats(index_path: Optional[str] = None, texts: Optional[list] = No
     }
     
     # Add file existence and size information
-    faiss_path = f"{resolved_index_path}/index.faiss"
-    texts_path = f"{resolved_index_path}/texts.npy"
+    faiss_path = os.path.join(resolved_index_path, "index.faiss")
+    texts_path = os.path.join(resolved_index_path, "texts.npy")
     stats["index_file_exists"] = os.path.exists(faiss_path)
     stats["texts_file_exists"] = os.path.exists(texts_path)
     

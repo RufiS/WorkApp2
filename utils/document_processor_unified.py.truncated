@@ -1,0 +1,760 @@
+# WorkApp2 Progress: Resource-1 (Potential FAISS Resource Leaks) - COMPLETED
+# GPU resource management implemented with proper cleanup and defensive programming
+# FAISS GPU resources are now properly initialized, managed, and cleaned up to prevent memory leaks
+
+from dataclasses import dataclass, field
+
+import os
+import time
+import json
+import logging
+import hashlib
+import shutil
+import threading
+import tempfile
+from typing import List, Dict, Tuple, Any, Optional, Union, Set, Sequence
+
+import numpy as np
+import faiss
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.document_loaders import TextLoader, PyPDFLoader, UnstructuredWordDocumentLoader
+from sentence_transformers import SentenceTransformer
+
+from utils.config_unified import retrieval_config, performance_config, app_config, resolve_path
+from utils.pdf_hyperlink_loader import PDFHyperlinkLoader
+from utils.index_management.index_operations import get_saved_chunk_params
+from utils.index_management.index_manager_unified import index_manager
+from utils.error_logging import query_logger
+from utils.error_handling.decorators import with_retry, with_error_handling, RetryableError
+from utils.error_handling.enhanced_decorators import with_advanced_retry, with_timing
+from utils.error_logging import log_error, log_warning
+
+# Setup logging
+logger = logging.getLogger(__name__)
+
+@dataclass
+class ChunkCacheEntry:
+    """Cache entry for document chunks"""
+    chunks: List[Dict[str, Any]]
+    timestamp: float = field(default_factory=time.time)
+    ttl: float = 3600 * 24  # Time to live in seconds (default: 24 hours)
+    
+    def is_expired(self) -> bool:
+        """Check if the cache entry is expired"""
+        return time.time() - self.timestamp > self.ttl
+
+class DocumentProcessor:
+    """Handles document loading, chunking, and indexing with optimized caching"""
+    
+    def __init__(self, embedding_model_name: str = None):
+        """
+        Initialize the document processor
+        
+        Args:
+            embedding_model_name: Name of the embedding model to use (defaults to config value)
+        """
+        self.embedding_model_name = embedding_model_name or retrieval_config.embedding_model
+        self.chunk_size = retrieval_config.chunk_size
+        self.chunk_overlap = retrieval_config.chunk_overlap
+        
+        # Initialize embedding model
+        self.embedding_model = SentenceTransformer(self.embedding_model_name)
+        self.embedding_dim = self.embedding_model.get_sentence_embedding_dimension()
+        
+        # Verify and adjust chunk parameters if needed
+        self.chunk_size, self.chunk_overlap = self._verify_chunk_parameters()
+        
+        # Initialize FAISS index
+        self.index = None
+        self.texts = []
+        self.chunks = []  # Alias for self.texts for backward compatibility
+        self.processed_files = set()
+        
+        # Initialize GPU resource management
+        self.gpu_resources = None
+        self.index_on_gpu = False
+        
+        # Initialize cache
+        self.chunk_cache = {}
+        self.cache_hits = 0
+        self.cache_misses = 0
+        self.enable_cache = performance_config.enable_chunk_cache
+        self.cache_size = performance_config.chunk_cache_size
+        
+        # Initialize metrics
+        self.total_documents = 0
+        self.total_chunks = 0
+        self.embedding_times = []
+        self.max_embedding_times = 100
+        
+        # Store chunk parameters
+        self.saved_chunk_params = (self.chunk_size, self.chunk_overlap)
+        
+        # Check for GPU availability
+        self.gpu_available = self._check_gpu_availability()
+        if self.gpu_available:
+            logger.info("GPU is available for embeddings")
+        else:
+            logger.info("GPU is not available, using CPU for embeddings")
+        
+        logger.info(f"Document processor initialized with model {self.embedding_model_name}")
+    
+    def __del__(self):
+        """
+        Destructor to ensure GPU resources are cleaned up when the object is destroyed
+        """
+        try:
+            self._cleanup_gpu_resources()
+        except Exception as e:
+            # Don't raise exceptions in destructor
+            pass
+    
+    def _check_gpu_availability(self) -> bool:
+        """Check if GPU is available for embeddings"""
+        try:
+            import torch
+            return torch.cuda.is_available()
+        except ImportError:
+            return False
+    
+    def _initialize_gpu_resources(self) -> None:
+        """
+        Initialize GPU resources for FAISS operations
+        
+        Raises:
+            RuntimeError: If GPU resources cannot be initialized
+        """
+        try:
+            if not self.gpu_available:
+                logger.debug("GPU not available, skipping GPU resource initialization")
+                return
+                
+            if self.gpu_resources is None:
+                logger.info("Initializing GPU resources for FAISS")
+                self.gpu_resources = faiss.StandardGpuResources()
+                
+                # Configure memory allocations for better resource management
+                # Set temporary memory to 256MB (can be adjusted based on available GPU memory)
+                temp_memory = 256 * 1024 * 1024  # 256MB
+                self.gpu_resources.setTempMemory(temp_memory)
+                
+                logger.info(f"GPU resources initialized with {temp_memory // (1024*1024)}MB temporary memory")
+                
+        except Exception as e:
+            error_msg = f"Failed to initialize GPU resources: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg, include_traceback=True)
+            # Don't raise exception, fall back to CPU
+            self.gpu_resources = None
+            logger.warning("Falling back to CPU-only FAISS operations")
+    
+    def _cleanup_gpu_resources(self) -> None:
+        """
+        Explicitly cleanup GPU resources to prevent memory leaks
+        """
+        try:
+            # Move index to CPU before cleanup if it's on GPU
+            if self.index_on_gpu and self.index is not None:
+                logger.info("Moving index from GPU to CPU before resource cleanup")
+                self._move_index_to_cpu()
+            
+            # Clean up GPU resources
+            if self.gpu_resources is not None:
+                logger.info("Cleaning up GPU resources")
+                # NOTE: faiss.StandardGpuResources doesn't have an explicit cleanup method
+                # but setting to None should trigger garbage collection
+                self.gpu_resources = None
+                self.index_on_gpu = False
+                logger.info("GPU resources cleaned up successfully")
+                
+                # Force garbage collection to ensure GPU memory is released
+                import gc
+                gc.collect()
+                
+                # Log GPU memory status if available
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        current_memory = torch.cuda.memory_allocated()
+                        logger.debug(f"GPU memory after cleanup: {current_memory / (1024*1024):.2f}MB")
+                except ImportError:
+                    pass
+                    
+        except Exception as e:
+            error_msg = f"Error during GPU resource cleanup: {str(e)}"
+            logger.warning(error_msg)
+            log_warning(error_msg, include_traceback=True)
+            # Continue execution even if cleanup fails
+    
+    def _move_index_to_gpu(self) -> bool:
+        """
+        Move the current index to GPU if available and not already on GPU
+        
+        Returns:
+            True if index was moved to GPU, False otherwise
+        """
+        try:
+            if not self.gpu_available or not performance_config.use_gpu_for_faiss:
+                return False
+                
+            if self.index is None:
+                logger.warning("Cannot move None index to GPU")
+                return False
+                
+            if self.index_on_gpu:
+                logger.debug("Index is already on GPU")
+                return True
+                
+            # Initialize GPU resources if needed
+            if self.gpu_resources is None:
+                self._initialize_gpu_resources()
+                
+            if self.gpu_resources is None:
+                logger.warning("GPU resources not available, cannot move index to GPU")
+                return False
+                
+            logger.info("Moving index to GPU")
+            gpu_index = faiss.index_cpu_to_gpu(self.gpu_resources, 0, self.index)
+            self.index = gpu_index
+            self.index_on_gpu = True
+            logger.info("Index successfully moved to GPU")
+            return True
+            
+        except Exception as e:
+            error_msg = f"Failed to move index to GPU: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg, include_traceback=True)
+            return False
+    
+    def _move_index_to_cpu(self) -> bool:
+        """
+        Move the current index to CPU if it's currently on GPU
+        
+        Returns:
+            True if index was moved to CPU, False otherwise
+        """
+        try:
+            if not self.index_on_gpu or self.index is None:
+                logger.debug("Index is already on CPU or is None")
+                return True
+                
+            logger.info("Moving index from GPU to CPU")
+            cpu_index = faiss.index_gpu_to_cpu(self.index)
+            self.index = cpu_index
+            self.index_on_gpu = False
+            logger.info("Index successfully moved to CPU")
+            return True
+            
+        except Exception as e:
+            error_msg = f"Failed to move index to CPU: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg, include_traceback=True)
+            return False
+    
+    def _verify_chunk_parameters(self) -> Tuple[int, int]:
+        """
+        Verify and potentially adjust chunk size and overlap parameters
+        
+        Returns:
+            Tuple of (chunk_size, chunk_overlap)
+        """
+        chunk_size = self.chunk_size
+        chunk_overlap = self.chunk_overlap
+        
+        # Ensure chunk size is reasonable
+        if chunk_size < 100:
+            logger.warning(f"Chunk size {chunk_size} is too small, adjusting to 100")
+            chunk_size = 100
+        elif chunk_size > 8000:
+            logger.warning(f"Chunk size {chunk_size} is too large, adjusting to 8000")
+            chunk_size = 8000
+        
+        # Ensure chunk overlap is reasonable
+        if chunk_overlap < 0:
+            logger.warning(f"Negative chunk overlap {chunk_overlap} is invalid, adjusting to 0")
+            chunk_overlap = 0
+        elif chunk_overlap >= chunk_size:
+            logger.warning(f"Chunk overlap {chunk_overlap} is >= chunk size {chunk_size}, adjusting to {chunk_size // 4}")
+            chunk_overlap = chunk_size // 4
+        elif chunk_overlap > chunk_size // 2:
+            logger.warning(f"Chunk overlap {chunk_overlap} is > 50% of chunk size, which may be inefficient")
+        
+        # Check if parameters were adjusted
+        if chunk_size != self.chunk_size or chunk_overlap != self.chunk_overlap:
+            logger.info(f"Adjusted chunk parameters: size={chunk_size}, overlap={chunk_overlap}")
+            self.chunk_size = chunk_size
+            self.chunk_overlap = chunk_overlap
+        
+        return chunk_size, chunk_overlap
+    def _get_cache_key(self, file_path: str, chunk_size: int, chunk_overlap: int) -> str:
+        """
+        Generate a cache key for document chunks
+        
+        Args:
+            file_path: Path to the document file
+            chunk_size: Size of chunks
+            chunk_overlap: Overlap between chunks
+            
+        Returns:
+            Cache key string
+        """
+        # Get file modification time
+        mtime = os.path.getmtime(file_path)
+        
+        # Create a dictionary of chunking parameters
+        params_dict = {
+            "file_path": file_path,
+            "mtime": mtime,
+            "chunk_size": chunk_size,
+            "chunk_overlap": chunk_overlap
+        }
+        
+        # Convert to JSON and hash
+        params_json = json.dumps(params_dict, sort_keys=True)
+        return hashlib.md5(params_json.encode()).hexdigest()
+    
+    def _add_to_cache(self, key: str, chunks: List[Dict[str, Any]], ttl: Optional[float] = None) -> None:
+        """
+        Add chunks to the cache
+        
+        Args:
+            key: Cache key
+            chunks: Chunks to cache
+            ttl: Time to live in seconds (None for default)
+        """
+        if not self.enable_cache:
+            return
+            
+        # Create cache entry
+        entry = ChunkCacheEntry(chunks=chunks, ttl=ttl or 3600 * 24)
+        
+        # Add to cache
+        self.chunk_cache[key] = entry
+        
+        # Trim cache if needed
+        if len(self.chunk_cache) > self.cache_size:
+            # Remove oldest entry
+            try:
+                if self.chunk_cache:
+                    oldest_key = min(self.chunk_cache.keys(), key=lambda k: self.chunk_cache[k].timestamp)
+                    del self.chunk_cache[oldest_key]
+                    logger.debug(f"Removed oldest cache entry with key {oldest_key}")
+            except (ValueError, KeyError) as e:
+                # This would happen if the cache became empty during processing
+                # or if the key was already removed by another thread
+                logger.warning(f"Error removing oldest cache entry: {str(e)}")
+                # Fallback: clear a random entry if cache is still too large
+                if len(self.chunk_cache) > self.cache_size and self.chunk_cache:
+                    try:
+                        random_key = next(iter(self.chunk_cache.keys()))
+                        del self.chunk_cache[random_key]
+                        logger.debug(f"Removed random cache entry with key {random_key} as fallback")
+                    except (StopIteration, KeyError) as inner_e:
+                        # Last resort: clear the entire cache if we can't remove a single entry
+                        logger.warning(f"Cache management failed: {str(inner_e)}, clearing entire cache")
+                        # Create a new cache with just the current entry to prevent memory leaks
+                        self.chunk_cache = {}
+                        self.chunk_cache[key] = entry  # Keep only the current entry
+                        logger.info(f"Cache reset with single entry for key {key}")
+    
+    def _get_from_cache(self, key: str) -> Optional[List[Dict[str, Any]]]:
+        """
+        Get chunks from the cache
+        
+        Args:
+            key: Cache key
+            
+        Returns:
+            Cached chunks or None if not found
+        """
+        if not self.enable_cache:
+            return None
+            
+        # Check if key exists in cache
+        if key in self.chunk_cache:
+            entry = self.chunk_cache[key]
+            
+            # Check if entry is expired
+            if entry.is_expired():
+                # Remove expired entry
+                del self.chunk_cache[key]
+                self.cache_misses += 1
+                return None
+            
+            # Update timestamp to keep entry fresh
+            entry.timestamp = time.time()
+            self.cache_hits += 1
+            return entry.chunks
+        
+        self.cache_misses += 1
+        return None
+    
+    def has_index(self, index_dir: Optional[str] = None) -> bool:
+        """
+        Check if an index exists either in memory or on disk
+        
+        Args:
+            index_dir: Directory to check for index files (defaults to config value)
+            
+        Returns:
+            True if an index exists, False otherwise
+        """
+        # Check if index is loaded in memory
+        if self.index is not None and len(self.texts) > 0:
+            logger.info("Index is already loaded in memory")
+            return True
+        
+        # Use configured index path if not specified
+        index_dir = index_dir or retrieval_config.index_path
+        
+        # Resolve the path to ensure consistency
+        index_dir = resolve_path(index_dir, create_dir=True)
+        
+        # Check if index exists on disk
+        index_file = os.path.join(index_dir, "index.faiss")
+        texts_file = os.path.join(index_dir, "texts.npy")
+        logger.debug(f"Resolved index directory for checking: {index_dir}")
+        
+        # Check if files exist
+        files_exist = os.path.exists(index_file) and os.path.exists(texts_file)
+        
+        if files_exist:
+            logger.info(f"Index files found at {index_file} and {texts_file}")
+        else:
+            logger.warning(f"Index files not found at {index_file} and/or {texts_file}")
+        
+        return files_exist
+        
+    def create_empty_index(self) -> None:
+        """
+        Create a new empty FAISS index
+        """
+        logger.info("Creating new empty FAISS index")
+        
+        # Initialize empty index with correct dimensions
+        self.index = faiss.IndexFlatL2(self.embedding_dim)
+        
+        # Initialize empty texts list
+        self.texts = []
+        self.chunks = []  # Alias for backward compatibility
+        
+        # Initialize empty processed files set
+        self.processed_files = set()
+        
+        # Reset metrics
+        self.total_documents = 0
+        self.total_chunks = 0
+        
+        logger.info(f"Created empty index with dimension {self.embedding_dim}")
+    
+    def get_metrics(self) -> Dict[str, Any]:
+        """
+        Get processor metrics
+        
+        Returns:
+            Dictionary with processor metrics
+        """
+        metrics = {
+            "total_documents": self.total_documents,
+            "total_chunks": self.total_chunks,
+            "cache_hits": self.cache_hits,
+            "cache_misses": self.cache_misses,
+            "cache_size": len(self.chunk_cache),
+            "cache_max_size": self.cache_size,
+            "gpu_available": self.gpu_available
+        }
+        
+        # Calculate cache hit rate
+        total_cache_accesses = self.cache_hits + self.cache_misses
+        if total_cache_accesses > 0:
+            metrics["cache_hit_rate"] = self.cache_hits / total_cache_accesses
+        else:
+            metrics["cache_hit_rate"] = 0.0
+        
+        # Calculate average embedding time
+        if self.embedding_times:
+            metrics["avg_embedding_time"] = sum(self.embedding_times) / len(self.embedding_times)
+            metrics["min_embedding_time"] = min(self.embedding_times)
+            metrics["max_embedding_time"] = max(self.embedding_times)
+        else:
+            metrics["avg_embedding_time"] = 0.0
+            metrics["min_embedding_time"] = 0.0
+            metrics["max_embedding_time"] = 0.0
+        
+        return metrics
+    
+    def _get_file_loader(self, file_path: str):
+        """
+        Get the appropriate loader for a file based on its extension
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            A document loader instance
+        
+        Raises:
+            ValueError: If the file type is not supported
+            FileNotFoundError: If the file does not exist
+            PermissionError: If the file cannot be accessed due to permissions
+        """
+        # Check if file exists and is accessible
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f"File not found: {file_path}")
+        if not os.path.isfile(file_path):
+            raise ValueError(f"Not a file: {file_path}")
+        if not os.access(file_path, os.R_OK):
+            raise PermissionError(f"Permission denied: {file_path}")
+            
+        file_ext = os.path.splitext(file_path)[1].lower()
+        
+        # Support PDF, TXT, and DOCX files
+        if file_ext == ".txt":
+            return TextLoader(file_path)
+        elif file_ext == ".pdf":
+            if performance_config.extract_pdf_hyperlinks:
+                return PDFHyperlinkLoader(file_path)
+            else:
+                return PyPDFLoader(file_path)
+        elif file_ext in [".docx", ".doc"]:
+            return UnstructuredWordDocumentLoader(file_path)
+        else:
+            raise ValueError(f"Unsupported file type: {file_ext}. Only PDF, TXT, and DOCX files are supported.")
+    
+    @with_timing(threshold=1.0)
+    @with_advanced_retry(max_attempts=3, backoff_factor=2)
+    def process_file(self, file) -> List[Dict[str, Any]]:
+        """
+        Process a file object (from streamlit file uploader)
+        
+        Args:
+            file: File object from streamlit file uploader
+            
+        Returns:
+            List of document chunks with metadata
+            
+        Raises:
+            ValueError: If file is empty or invalid
+            IOError: If there's an I/O error during file processing
+            RuntimeError: If document processing fails
+            Exception: For any other unexpected errors
+        """
+        temp_file_path = None
+        try:
+            # Check if file is empty
+            if not file or not hasattr(file, 'getvalue') or len(file.getvalue()) == 0:
+                error_msg = f"Empty or invalid file: {getattr(file, 'name', 'unknown')}"
+                log_error(error_msg, include_traceback=False)
+                raise ValueError(error_msg)
+                
+            # Create a temporary file to save the uploaded file
+            with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(file.name)[1]) as temp_file:
+                temp_file.write(file.getvalue())
+                temp_file_path = temp_file.name
+            
+            # Process the temporary file
+            chunks = self.load_and_chunk_document(temp_file_path)
+            
+            # Check if chunks are empty and log it
+            if not chunks:
+                error_msg = f"No content extracted from file {file.name}. File may be empty, corrupted, or in an unsupported format."
+                logger.warning(error_msg)
+                # Log to central error log
+                log_warning(error_msg, include_traceback=False)
+            
+            return chunks
+            
+        except FileNotFoundError as e:
+            error_msg = f"File not found error processing {getattr(file, 'name', 'unknown')}: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg)
+            raise ValueError(error_msg) from e
+            
+        except PermissionError as e:
+            error_msg = f"Permission denied for file {getattr(file, 'name', 'unknown')}: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg)
+            raise ValueError(error_msg) from e
+            
+        except ValueError as e:
+            error_msg = f"Invalid file or format for {getattr(file, 'name', 'unknown')}: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg)
+            raise ValueError(error_msg) from e
+            
+        except IOError as e:
+            error_msg = f"I/O error processing file {getattr(file, 'name', 'unknown')}: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg)
+            raise IOError(error_msg) from e
+            
+        except Exception as e:
+            error_msg = f"Unexpected error processing file {getattr(file, 'name', 'unknown')}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            log_error(error_msg, include_traceback=True)
+            raise RuntimeError(error_msg) from e
+            
+        finally:
+            # Clean up the temporary file
+            if temp_file_path and os.path.exists(temp_file_path):
+                try:
+                    os.unlink(temp_file_path)
+                except Exception as e:
+                    logger.warning(f"Failed to remove temporary file {temp_file_path}: {str(e)}")
+    
+    @with_timing(threshold=1.0)
+    @with_advanced_retry(max_attempts=3, backoff_factor=2)
+    def load_and_chunk_document(self, file_path: str) -> List[Dict[str, Any]]:
+        """
+        Load a document and split it into chunks with caching
+        
+        Args:
+            file_path: Path to the document file
+            
+        Returns:
+            List of document chunks with metadata
+            
+        Raises:
+            FileNotFoundError: If the file does not exist
+            PermissionError: If the file cannot be accessed due to permissions
+            ValueError: If the file type is not supported
+            IOError: If there's an I/O error during file reading
+            RuntimeError: If document loading or chunking fails
+            Exception: For any other unexpected errors
+        """
+        # Check if file exists
+        if not os.path.exists(file_path):
+            error_msg = f"File not found: {file_path}"
+            log_error(error_msg, include_traceback=False)
+            raise FileNotFoundError(error_msg)
+        
+        # Check if file is readable
+        if not os.access(file_path, os.R_OK):
+            error_msg = f"Permission denied: {file_path}"
+            log_error(error_msg, include_traceback=False)
+            raise PermissionError(error_msg)
+        
+        # Check if file is empty
+        if os.path.getsize(file_path) == 0:
+            error_msg = f"Empty file: {file_path}"
+            log_error(error_msg, include_traceback=False)
+            raise ValueError(error_msg)
+        
+        # Check cache first
+        cache_key = self._get_cache_key(file_path, self.chunk_size, self.chunk_overlap)
+        cached_chunks = self._get_from_cache(cache_key)
+        if cached_chunks is not None:
+            logger.info(f"Cache hit for document {os.path.basename(file_path)}")
+            return cached_chunks
+        
+        try:
+            # Compute document hash for metadata
+            doc_hash = self._compute_document_hash(file_path)
+            
+            # Get appropriate loader
+            try:
+                loader = self._get_file_loader(file_path)
+            except ValueError as e:
+                error_msg = f"Unsupported file type: {file_path}"
+                log_error(error_msg, include_traceback=False)
+                raise ValueError(error_msg) from e
+            
+            # Load document
+            try:
+                documents = loader.load()
+            except IOError as e:
+                error_msg = f"I/O error loading document {file_path}: {str(e)}"
+                log_error(error_msg)
+                raise IOError(f"I/O error loading document: {str(e)}") from e
+            except UnicodeDecodeError as e:
+                error_msg = f"Unicode decode error in document {file_path}: {str(e)}"
+                log_error(error_msg)
+                raise ValueError(f"Document encoding error: {str(e)}") from e
+            except Exception as e:
+                error_msg = f"Error loading document {file_path}: {str(e)}"
+                log_error(error_msg)
+                raise RuntimeError(f"Failed to load document: {str(e)}") from e
+            
+            # Check if documents were loaded
+            if not documents:
+                warning_msg = f"No content loaded from {os.path.basename(file_path)}"
+                logger.warning(warning_msg)
+                log_warning(warning_msg)
+                return []
+            
+            # Create text splitter with optimized settings
+            # Verify chunk parameters again in case they were changed externally
+            chunk_size, chunk_overlap = self._verify_chunk_parameters()
+            
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=chunk_size,
+                chunk_overlap=chunk_overlap,
+                separators=["\n\n", "\n", " ", ""],
+                keep_separator=False
+            )
+            
+            # Log chunking parameters
+            logger.info(f"Chunking document {os.path.basename(file_path)} with size={chunk_size}, overlap={chunk_overlap}")
+            
+            # Split documents into chunks
+            try:
+                chunks = text_splitter.split_documents(documents)
+                logger.info(f"Split document into {len(chunks)} chunks")
+            except Exception as e:
+                error_msg = f"Error chunking document {file_path}: {str(e)}"
+                log_error(error_msg)
+                raise RuntimeError(f"Failed to chunk document: {str(e)}") from e
+            
+            # Format chunks with metadata
+            formatted_chunks = []
+            total_chunk_size = 0
+            small_chunks_count = 0
+            large_chunks_count = 0
+            empty_chunks_count = 0
+            
+            for i, chunk in enumerate(chunks):
+                # Check for empty or whitespace-only chunks
+                if not chunk.page_content or chunk.page_content.isspace():
+                    logger.warning(f"Empty or whitespace-only chunk detected in {os.path.basename(file_path)}, chunk {i}")
+                    # Log to central error log
+                    log_warning(f"Empty or whitespace-only chunk detected in {os.path.basename(file_path)}, chunk {i}")
+                    empty_chunks_count += 1
+                    continue
+                
+                # Log chunk size
+                chunk_size = len(chunk.page_content)
+                total_chunk_size += chunk_size
+                
+                # Check for abnormal chunk sizes
+                if chunk_size < 50:
+                    warning_msg = f"Abnormally small chunk detected in {os.path.basename(file_path)}, chunk {i}: {chunk_size} chars"
+                    logger.warning(warning_msg)
+                    # Log to central error log
+                    log_warning(warning_msg)
+                    small_chunks_count += 1
+                elif chunk_size > self.chunk_size * 1.5:
+                    warning_msg = f"Abnormally large chunk detected in {os.path.basename(file_path)}, chunk {i}: {chunk_size} chars"
+                    logger.warning(warning_msg)
+                    # Log to central error log
+                    log_warning(warning_msg)
+                    large_chunks_count += 1
+                
+                # Create chunk with enhanced metadata
+                formatted_chunks.append({
+                    "id": f"{os.path.basename(file_path)}-{i}",
+                    "text": chunk.page_content,
+                    "metadata": {
+                        "source": file_path,
+                        "page": chunk.metadata.get("page", None),
+                        "chunk_index": i,
+                        "chunk_size": chunk_size,
+                        "doc_hash": doc_hash,
+                        "creation_time": time.time(),
+                        "chunk_params": {
+                            "size": self.chunk_size,
+                            "overlap": self.chunk_overlap
+                        }
+                    }
+                })
+            
+            # Log warning if no valid chunks were found

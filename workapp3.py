@@ -817,11 +817,12 @@ def main():
                         st.info("⚠️ DRY RUN MODE: Index changes will not be saved to disk")
                         logger.info("Dry run mode: Skipping index save to disk")
                     else:
-                        # Create directory if it doesn't exist
-                        os.makedirs(retrieval_config.index_path, exist_ok=True)
+                        # Create directory if it doesn't exist  
+                        from utils.config_unified import resolve_path
+                        resolved_index_dir = resolve_path(retrieval_config.index_path, create_dir=True)
                         
                         # Save index to disk
-                        index_path = os.path.join(retrieval_config.index_path, "index.faiss")
+                        index_path = os.path.join(resolved_index_dir, "index.faiss")
                         # Check if index is on GPU before converting
                         if doc_processor.gpu_available and hasattr(doc_processor.index, 'getDevice') and doc_processor.index.getDevice() >= 0:
                             cpu_index = faiss.index_gpu_to_cpu(doc_processor.index)
@@ -830,11 +831,11 @@ def main():
                         faiss.write_index(cpu_index, index_path)
                         
                         # Save texts
-                        texts_path = os.path.join(retrieval_config.index_path, "texts.npy")
+                        texts_path = os.path.join(resolved_index_dir, "texts.npy")
                         np.save(texts_path, np.array(doc_processor.texts, dtype=object), allow_pickle=True)
                         
                         # Save parameters
-                        params_path = os.path.join(retrieval_config.index_path, "metadata.json")
+                        params_path = os.path.join(resolved_index_dir, "metadata.json")
                         params = {
                             "embedding_model": doc_processor.embedding_model_name,
                             "chunk_size": doc_processor.chunk_size,
@@ -894,7 +895,9 @@ def main():
                             st.session_state.processed_files = set()
                             # Try to get processed files from metadata if available
                             try:
-                                metadata_path = os.path.join(retrieval_config.index_path, "metadata.json")
+                                from utils.config_unified import resolve_path
+                                resolved_index_dir = resolve_path(retrieval_config.index_path)
+                                metadata_path = os.path.join(resolved_index_dir, "metadata.json")
                                 if os.path.exists(metadata_path):
                                     with open(metadata_path, "r") as f:
                                         metadata = json.load(f)

@@ -1,0 +1,1 @@
+When using the replace_in_file tool, Do not include the docstring in the function definition or the tool will fail.

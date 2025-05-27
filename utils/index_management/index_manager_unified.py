@@ -203,33 +203,7 @@ class IndexManager:
         
         return stats
         
-    def handle_dimension_mismatch(self, current_dim: int, expected_dim: int) -> None:
-        """
-        Handle dimension mismatch between index and embeddings
-        
-        Args:
-            current_dim: Current dimension of the index
-            expected_dim: Expected dimension from the embedding model
-        """
-        logger.warning(f"Embedding dimensions mismatch: index has {current_dim}, but embeddings have {expected_dim}")
-        
-        # Create new index with correct dimensions
-        self.index = faiss.IndexFlatL2(expected_dim)
-        self.texts = []
-        logger.info(f"Created new index with dimension {expected_dim}")
-        
-        # Clear existing index before adding new data
-        try:
-            clear_index(
-                rebuild_immediately=True,
-                embedder=None,  # We'll handle this ourselves
-                gpu_available=self.gpu_available,
-                index_path=self.index_path,
-                dry_run=False
-            )
-            logger.info("Cleared existing index before adding new data")
-        except Exception as e:
-            logger.error(f"Error clearing index during dimension mismatch handling: {str(e)}", exc_info=True)
+# Removed unused method handle_dimension_mismatch
     
     def replace_index(self, new_index: Any, new_texts: List[str]) -> Tuple[bool, str]:
         """
