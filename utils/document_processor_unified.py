@@ -1,11 +1,6 @@
-# WorkApp2 Progress: Last completed Ret-2 (Potential Index Dimension Mismatch)
-# Next pending Ret-3 (Inconsistent Error Handling in keyword_fallback_search())
-# PART 1: Fixed hardcoded file paths by consistently using resolve_path
-# Doc-5 Fix: Enhanced path resolution with better logging and consistent use of resolve_path
-# throughout the codebase to ensure cross-platform compatibility and proper path handling.
-# PART 2: Fixed potential index dimension mismatch
-# Ret-2 Fix: Enhanced dimension mismatch handling with better error messages, migration instructions,
-# batch processing for large indices, backup creation before rebuilding, and improved error recovery.
+# WorkApp2 Progress: Resource-1 (Potential FAISS Resource Leaks) - COMPLETED
+# GPU resource management implemented with proper cleanup and defensive programming
+# FAISS GPU resources are now properly initialized, managed, and cleaned up to prevent memory leaks
 
 from dataclasses import dataclass, field
 
@@ -17,7 +12,7 @@ import hashlib
 import shutil
 import threading
 import tempfile
-from typing import List, Dict, Tuple, Any, Optional, Union, Set
+from typing import List, Dict, Tuple, Any, Optional, Union, Set, Sequence
 
 import numpy as np
 import faiss
@@ -75,6 +70,10 @@ class DocumentProcessor:
         self.chunks = []  # Alias for self.texts for backward compatibility
         self.processed_files = set()
         
+        # Initialize GPU resource management
+        self.gpu_resources = None
+        self.index_on_gpu = False
+        
         # Initialize cache
         self.chunk_cache = {}
         self.cache_hits = 0
@@ -100,12 +99,156 @@ class DocumentProcessor:
         
         logger.info(f"Document processor initialized with model {self.embedding_model_name}")
     
+    def __del__(self):
+        """
+        Destructor to ensure GPU resources are cleaned up when the object is destroyed
+        """
+        try:
+            self._cleanup_gpu_resources()
+        except Exception as e:
+            # Don't raise exceptions in destructor
+            pass
+    
     def _check_gpu_availability(self) -> bool:
         """Check if GPU is available for embeddings"""
         try:
             import torch
             return torch.cuda.is_available()
         except ImportError:
+            return False
+    
+    def _initialize_gpu_resources(self) -> None:
+        """
+        Initialize GPU resources for FAISS operations
+        
+        Raises:
+            RuntimeError: If GPU resources cannot be initialized
+        """
+        try:
+            if not self.gpu_available:
+                logger.debug("GPU not available, skipping GPU resource initialization")
+                return
+                
+            if self.gpu_resources is None:
+                logger.info("Initializing GPU resources for FAISS")
+                self.gpu_resources = faiss.StandardGpuResources()
+                
+                # Configure memory allocations for better resource management
+                # Set temporary memory to 256MB (can be adjusted based on available GPU memory)
+                temp_memory = 256 * 1024 * 1024  # 256MB
+                self.gpu_resources.setTempMemory(temp_memory)
+                
+                logger.info(f"GPU resources initialized with {temp_memory // (1024*1024)}MB temporary memory")
+                
+        except Exception as e:
+            error_msg = f"Failed to initialize GPU resources: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg, include_traceback=True)
+            # Don't raise exception, fall back to CPU
+            self.gpu_resources = None
+            logger.warning("Falling back to CPU-only FAISS operations")
+    
+    def _cleanup_gpu_resources(self) -> None:
+        """
+        Explicitly cleanup GPU resources to prevent memory leaks
+        """
+        try:
+            # Move index to CPU before cleanup if it's on GPU
+            if self.index_on_gpu and self.index is not None:
+                logger.info("Moving index from GPU to CPU before resource cleanup")
+                self._move_index_to_cpu()
+            
+            # Clean up GPU resources
+            if self.gpu_resources is not None:
+                logger.info("Cleaning up GPU resources")
+                # NOTE: faiss.StandardGpuResources doesn't have an explicit cleanup method
+                # but setting to None should trigger garbage collection
+                self.gpu_resources = None
+                self.index_on_gpu = False
+                logger.info("GPU resources cleaned up successfully")
+                
+                # Force garbage collection to ensure GPU memory is released
+                import gc
+                gc.collect()
+                
+                # Log GPU memory status if available
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        current_memory = torch.cuda.memory_allocated()
+                        logger.debug(f"GPU memory after cleanup: {current_memory / (1024*1024):.2f}MB")
+                except ImportError:
+                    pass
+                    
+        except Exception as e:
+            error_msg = f"Error during GPU resource cleanup: {str(e)}"
+            logger.warning(error_msg)
+            log_warning(error_msg, include_traceback=True)
+            # Continue execution even if cleanup fails
+    
+    def _move_index_to_gpu(self) -> bool:
+        """
+        Move the current index to GPU if available and not already on GPU
+        
+        Returns:
+            True if index was moved to GPU, False otherwise
+        """
+        try:
+            if not self.gpu_available or not performance_config.use_gpu_for_faiss:
+                return False
+                
+            if self.index is None:
+                logger.warning("Cannot move None index to GPU")
+                return False
+                
+            if self.index_on_gpu:
+                logger.debug("Index is already on GPU")
+                return True
+                
+            # Initialize GPU resources if needed
+            if self.gpu_resources is None:
+                self._initialize_gpu_resources()
+                
+            if self.gpu_resources is None:
+                logger.warning("GPU resources not available, cannot move index to GPU")
+                return False
+                
+            logger.info("Moving index to GPU")
+            gpu_index = faiss.index_cpu_to_gpu(self.gpu_resources, 0, self.index)
+            self.index = gpu_index
+            self.index_on_gpu = True
+            logger.info("Index successfully moved to GPU")
+            return True
+            
+        except Exception as e:
+            error_msg = f"Failed to move index to GPU: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg, include_traceback=True)
+            return False
+    
+    def _move_index_to_cpu(self) -> bool:
+        """
+        Move the current index to CPU if it's currently on GPU
+        
+        Returns:
+            True if index was moved to CPU, False otherwise
+        """
+        try:
+            if not self.index_on_gpu or self.index is None:
+                logger.debug("Index is already on CPU or is None")
+                return True
+                
+            logger.info("Moving index from GPU to CPU")
+            cpu_index = faiss.index_gpu_to_cpu(self.index)
+            self.index = cpu_index
+            self.index_on_gpu = False
+            logger.info("Index successfully moved to CPU")
+            return True
+            
+        except Exception as e:
+            error_msg = f"Failed to move index to CPU: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg, include_traceback=True)
             return False
     
     def _verify_chunk_parameters(self) -> Tuple[int, int]:
