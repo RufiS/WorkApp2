@@ -5,6 +5,11 @@ This workflow tackles **all known duplicate or overlapping code** and then runs 
 
 > **Context limit**: Each step is scoped so an LLM with 128 k tokens can complete it comfortably.
 
+Process to follow to resolve write_to_file file truncation issues with documents that are more than 500 lines: 
+1. You need to break the document in to 4 seperate files, each with a maximum of 500 lines of code.
+2. Make your edits to each of these file chunks
+3. Once edits are complete, merge the edited chunks together.
+
 ---
 
 ## A · High‑Priority Target Groups (one‑time merges)

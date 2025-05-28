@@ -184,7 +184,7 @@ def fix_index(index_path: Optional[str] = None) -> Tuple[bool, str]:
             logger.warning(f"Index files missing at {resolved_index_path}, creating new empty index")
             
             # Import DocumentProcessor here to avoid circular imports
-            from utils.document_processor_unified import DocumentProcessor
+            from core.document_processor_unified import DocumentProcessor
             
             # Create a new document processor
             processor = DocumentProcessor()

@@ -118,8 +118,6 @@ class LLMCacheEntry:
         """Check if the cache entry is expired"""
         return time.time() - self.timestamp > self.ttl
 
-
-
 class LLMService:
     """Enhanced service for interacting with LLM models"""
     
@@ -407,9 +405,9 @@ class LLMService:
             metrics["max_request_time"] = 0.0
         
         return metrics
-    
     @with_timing(threshold=1.0)
     @with_advanced_retry(max_attempts=model_config.retry_attempts, backoff_factor=model_config.retry_backoff)
+    @with_error_tracking()
     def chat_completion(self, 
                        prompt: str, 
                        model: Optional[str] = None, 
@@ -694,6 +692,7 @@ class LLMService:
                 
                 if is_valid:
                     formatted_response["parsed_json"] = parsed_json
+                else:
                     logger.warning(f"JSON validation failed: {error_msg}")
                     formatted_response["json_validation_error"] = error_msg
                     
@@ -738,7 +737,8 @@ class LLMService:
         
         Args:
             prompts: List of dictionaries with prompt details:
-                     [{"prompt": str, "model": str, "max_tokens": int, "temperature": float}]            batch_size: Maximum number of concurrent requests to make (None for default)                     
+                     [{"prompt": str, "model": str, "max_tokens": int, "temperature": float}]            
+            batch_size: Maximum number of concurrent requests to make (None for default)                     
         Returns:
             List of response dictionaries in the same order as the input prompts
         """
@@ -805,8 +805,8 @@ class LLMService:
         return results
     
     async def process_extraction_and_formatting(self, 
-                                               query: str, 
-                                               context: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+                                              query: str, 
+                                              context: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """
         Process both extraction and formatting in parallel when possible
         
@@ -829,16 +829,13 @@ class LLMService:
             except ImportError:
                 # Fallback to simple file logging
                 try:
-                    from utils.config_unified import app_config
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
+                    from utils.config_unified import resolve_path
+                    fallback_log_path = resolve_path("./logs/workapp_errors.log", create_dir=True)
                 except ImportError:
-                    # If config is not available, use a default path
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
+                    fallback_log_path = "./logs/workapp_errors.log"
+                    os.makedirs(os.path.dirname(fallback_log_path), exist_ok=True)
                 
-                # Create directory if it doesn't exist
-                os.makedirs(os.path.dirname(error_log_path), exist_ok=True)
-                
-                with open(error_log_path, "a") as error_log:
+                with open(fallback_log_path, "a") as error_log:
                     error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - WARNING - {error_msg}\n")
             return {"error": "Empty context provided"}, {"error": "Extraction failed due to empty context"}
         
@@ -848,119 +845,26 @@ class LLMService:
         # Generate extraction prompt
         extraction_prompt = self.generate_extraction_prompt(query, context)
         
-        # Get extraction result
-        start_time = time.time()
-        extraction_response = None
-        extraction_time = 0
-        
-        # Enhanced error handling for API calls
-        try:
-            extraction_response = await self.async_chat_completion(
-                prompt=extraction_prompt,
-                model=model_config.extraction_model,
-                max_tokens=model_config.max_tokens,
-                validate_json=True,
-                json_schema=ANSWER_SCHEMA
-            )
-            extraction_time = time.time() - start_time
-            logger.info(f"Extraction completed in {extraction_time:.2f} seconds")
-        except asyncio.TimeoutError:
-            error_msg = "Timeout occurred during extraction API call"
-            logger.error(error_msg)
-            try:
-                from utils.error_logging import log_error
-                log_error(error_msg, error_type="ERROR", source="LLMService.process_extraction_and_formatting")
-            except ImportError:
-                # Fallback logging
-                try:
-                    from utils.config_unified import app_config
-                    error_log_path = app_config.error_log_path
-                except ImportError:
-                    # If config is not available, use a default path
-                    error_log_path = "./logs/workapp_errors.log"
-                
-                # Create directory if it doesn't exist
-                os.makedirs(os.path.dirname(error_log_path), exist_ok=True)
-                
-                with open(error_log_path, "a") as error_log:
-                    error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - ERROR - {error_msg}\n")
-            extraction_response = {"error": error_msg, "content": ""}
-        except openai.RateLimitError as e:
-            error_msg = f"Rate limit exceeded during extraction: {str(e)}"
-            logger.error(error_msg)
-            try:
-                from utils.error_logging import log_error
-                log_error(error_msg, error_type="ERROR", source="LLMService.process_extraction_and_formatting")
-            except ImportError:
-                # Fallback logging
-                with open("./logs/workapp_errors.log", "a") as error_log:
-                    error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - ERROR - {error_msg}\n")
-            extraction_response = {"error": error_msg, "content": ""}
-        except openai.APIConnectionError as e:
-            error_msg = f"API connection error during extraction: {str(e)}"
-            logger.error(error_msg)
-            try:
-                from utils.error_logging import log_error
-                log_error(error_msg, error_type="ERROR", source="LLMService.process_extraction_and_formatting")
-            except ImportError:
-                # Fallback logging
-                with open("./logs/workapp_errors.log", "a") as error_log:
-                    error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - ERROR - {error_msg}\n")
-            extraction_response = {"error": error_msg, "content": ""}
-        except Exception as e:
-            error_msg = f"Unexpected error during extraction: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            try:
-                from utils.error_logging import log_error
-                log_error(error_msg, error_type="ERROR", include_traceback=True, source="LLMService.process_extraction_and_formatting")
-            except ImportError:
-                # Fallback logging
-                with open("./logs/workapp_errors.log", "a") as error_log:
-                    error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - ERROR - {error_msg}\n")
-                    import traceback
-                    error_log.write(traceback.format_exc())
-            extraction_response = {"error": error_msg, "content": ""}
+        # Get extraction result with JSON validation
+        extraction_response = await self.async_chat_completion(
+            prompt=extraction_prompt,
+            model=model_config.extraction_model,
+            max_tokens=model_config.max_tokens,
+            validate_json=True,
+            json_schema=ANSWER_SCHEMA
+        )
         
         # Check for errors or JSON validation failures
         max_retries = 3
         retry_count = 0
         context_reduction_factor = 0.5  # Start by reducing context by half
-        backoff_time = 1.0  # Initial backoff time in seconds
         
         while ("error" in extraction_response or "json_validation_error" in extraction_response) and retry_count < max_retries:
             retry_count += 1
             
-            # Apply exponential backoff for rate limit errors
-            if "error" in extraction_response and "rate limit" in extraction_response["error"].lower():
-                backoff_seconds = backoff_time * (2 ** (retry_count - 1))  # Exponential backoff
-                logger.warning(f"Rate limit error, backing off for {backoff_seconds:.2f} seconds before retry {retry_count}/{max_retries}")
-                await asyncio.sleep(backoff_seconds)
-            
             # If there was a JSON validation error, try again with reduced context
             if "json_validation_error" in extraction_response and len(context) > 1000:
                 logger.warning(f"JSON validation failed (attempt {retry_count}/{max_retries}), retrying with reduced context")
-                # Log to central error log
-                try:
-                    from utils.config_unified import app_config
-                    from utils.error_logging import log_error
-                    log_error(f"JSON validation failed (attempt {retry_count}/{max_retries}), retrying with reduced context", 
-                             error_type="WARNING", 
-                             source="LLMService.process_extraction_and_formatting")
-                except ImportError:
-                    pass
-                # Fallback to simple file logging
-                try:
-                    from utils.config_unified import app_config
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
-                except ImportError:
-                    # If config is not available, use a default path
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
-                    
-                    # Create directory if it doesn't exist
-                    os.makedirs(os.path.dirname(error_log_path), exist_ok=True)
-                    
-                    with open(error_log_path, "a") as error_log:
-                        error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - WARNING - JSON validation failed (attempt {retry_count}/{max_retries}), retrying with reduced context\n")
                 
                 # Calculate how much context to keep based on the retry count
                 context_to_keep = int(len(context) * (1 - context_reduction_factor))
@@ -970,325 +874,78 @@ class LLMService:
                 reduced_extraction_prompt = self.generate_extraction_prompt(query, reduced_context)
                 
                 # Try again with reduced context
-                try:
-                    start_time = time.time()
-                    extraction_response = await self.async_chat_completion(
-                        prompt=reduced_extraction_prompt,
-                        model=model_config.extraction_model,
-                        max_tokens=model_config.max_tokens,
-                        validate_json=True,
-                        json_schema=ANSWER_SCHEMA
-                    )
-                    extraction_time = time.time() - start_time
-                    logger.info(f"Retry extraction {retry_count} completed in {extraction_time:.2f} seconds")
-                except (asyncio.TimeoutError, openai.RateLimitError, openai.APIConnectionError) as e:
-                    error_type = "Timeout" if isinstance(e, asyncio.TimeoutError) else \
-                                "Rate limit" if isinstance(e, openai.RateLimitError) else "API connection error"
-                    error_msg = f"{error_type} during retry {retry_count}: {str(e)}"
-                    logger.error(error_msg)
-                    try:
-                        from utils.error_logging import log_error
-                        log_error(error_msg, error_type="ERROR", source="LLMService.process_extraction_and_formatting")
-                    except ImportError:
-                        # Fallback logging
-                        with open("./logs/workapp_errors.log", "a") as error_log:
-                            error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - ERROR - {error_msg}\n")
-                    extraction_response = {"error": error_msg, "content": ""}
-                    
-        # Increase reduction factor for next attempt if needed
-        context_reduction_factor += 0.15
-        if "error" in extraction_response:
+                extraction_response = await self.async_chat_completion(
+                    prompt=reduced_extraction_prompt,
+                    model=model_config.extraction_model,
+                    max_tokens=model_config.max_tokens,
+                    validate_json=True,
+                    json_schema=ANSWER_SCHEMA
+                )
+                
+                # Increase reduction factor for next attempt if needed
+                context_reduction_factor += 0.15
+            elif "error" in extraction_response:
                 # If there's a general error, retry with the same context but with a more explicit JSON instruction
-                error_msg = f"Error in extraction (attempt {retry_count}/{max_retries}): {extraction_response.get('error', 'Unknown error')}, retrying with explicit JSON instructions"
-                logger.warning(error_msg)
-                # Log to central error log
-                try:
-                    from utils.error_logging import log_error
-                    log_error(error_msg, error_type="WARNING", source="LLMService.process_extraction_and_formatting")
-                except ImportError:
-                    # Fallback to simple file logging
-                    try:
-                        from utils.config_unified import app_config
-                        error_log_path = app_config.error_log_path
-                    except ImportError:
-                        # If config is not available, use a default path
-                        error_log_path = "./logs/workapp_errors.log"
-                    
-                    # Create directory if it doesn't exist
-                    os.makedirs(os.path.dirname(error_log_path), exist_ok=True)
-                    
-                    with open(error_log_path, "a") as error_log:
-                        error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - WARNING - {error_msg}\n")
+                logger.warning(f"Error in extraction (attempt {retry_count}/{max_retries}), retrying with explicit JSON instructions")
                 
                 # Add explicit JSON formatting instructions
                 enhanced_prompt = extraction_prompt + "\n\nIMPORTANT: Your response MUST be valid JSON with the following structure: {\"answer\": \"your detailed answer\", \"sources\": [\"source1\", \"source2\"], \"confidence\": 0.95}"
                 
                 # Try again with enhanced prompt
-                try:
-                    start_time = time.time()
-                    extraction_response = await self.async_chat_completion(
-                        prompt=enhanced_prompt,
-                        model=model_config.extraction_model,
-                        max_tokens=model_config.max_tokens,
-                        validate_json=True,
-                        json_schema=ANSWER_SCHEMA
-                    )
-                    extraction_time = time.time() - start_time
-                    logger.info(f"Retry extraction {retry_count} with explicit JSON instructions completed in {extraction_time:.2f} seconds")
-                except (asyncio.TimeoutError, openai.RateLimitError, openai.APIConnectionError) as e:
-                    error_type = "Timeout" if isinstance(e, asyncio.TimeoutError) else \
-                                "Rate limit" if isinstance(e, openai.RateLimitError) else "API connection error"
-                    error_msg = f"{error_type} during retry {retry_count} with explicit JSON: {str(e)}"
-                    logger.error(error_msg)
-                    try:
-                        from utils.error_logging import log_error
-                        log_error(error_msg, error_type="ERROR", source="LLMService.process_extraction_and_formatting")
-                    except ImportError:
-                        # Fallback logging
-                        with open("./logs/workapp_errors.log", "a") as error_log:
-                            error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - ERROR - {error_msg}\n")
-                    extraction_response = {"error": error_msg, "content": ""}
-                    
-                    # For rate limit errors, increase backoff time
-                    if isinstance(e, openai.RateLimitError):
-                        backoff_seconds = backoff_time * (2 ** retry_count)  # Increase backoff for next attempt
-                        logger.warning(f"Rate limit error, backing off for {backoff_seconds:.2f} seconds")
-                        await asyncio.sleep(backoff_seconds)
-                except Exception as e:
-                    error_msg = f"Unexpected error during retry {retry_count} with explicit JSON: {str(e)}"
-                    logger.error(error_msg, exc_info=True)
-                    try:
-                        from utils.error_logging import log_error
-                        log_error(error_msg, error_type="ERROR", include_traceback=True, source="LLMService.process_extraction_and_formatting")
-                    except ImportError:
-                        # Fallback logging
-                        with open("./logs/workapp_errors.log", "a") as error_log:
-                            error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - ERROR - {error_msg}\n")
-                            import traceback
-                            error_log.write(traceback.format_exc())
-                    extraction_response = {"error": error_msg, "content": ""}
+                extraction_response = await self.async_chat_completion(
+                    prompt=enhanced_prompt,
+                    model=model_config.extraction_model,
+                    max_tokens=model_config.max_tokens,
+                    validate_json=True,
+                    json_schema=ANSWER_SCHEMA
+                )
+            else:
+                # Break the loop if there's no error or JSON validation error
+                break
         
         # If we've exhausted retries and still have JSON validation errors, try one last time without validation
-        if ("json_validation_error" in extraction_response or "error" in extraction_response) and retry_count >= max_retries:
-            error_msg = f"JSON validation or extraction still failed after {max_retries} attempts, proceeding with final attempt using minimal context"
-            logger.warning(error_msg)
-            # Log to central error log
-            try:
-                from utils.error_logging import log_error
-                log_error(error_msg, error_type="WARNING", source="LLMService.process_extraction_and_formatting")
-            except ImportError:
-                # Fallback to simple file logging
-                try:
-                    from utils.config_unified import app_config
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
-                except ImportError:
-                    # If config is not available, use a default path
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
-                
-                # Create directory if it doesn't exist
-                os.makedirs(os.path.dirname(error_log_path), exist_ok=True)
-                
-                with open(error_log_path, "a") as error_log:
-                    error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - WARNING - {error_msg}\n")
+        if "json_validation_error" in extraction_response and retry_count >= max_retries:
+            logger.warning(f"JSON validation still failed after {max_retries} attempts with reduced context, proceeding without validation")
             
             # Try one last time with minimal context and explicit instructions, but without validation
             minimal_context = context[:int(len(context) * 0.2)] + "\n\n[Context significantly truncated due to processing limitations]\n"
             final_prompt = self.generate_extraction_prompt(query, minimal_context) + "\n\nPlease provide a concise answer based on the limited context available."
             
-            try:
-                start_time = time.time()
-                extraction_response = await self.async_chat_completion(
-                    prompt=final_prompt,
-                    model=model_config.extraction_model,
-                    max_tokens=model_config.max_tokens,
-                    validate_json=False  # Disable validation for the final attempt
-                )
-                extraction_time = time.time() - start_time
-                logger.info(f"Final extraction attempt with minimal context completed in {extraction_time:.2f} seconds")
-            except Exception as e:
-                # For the final attempt, if it still fails, create a fallback response
-                error_msg = f"Final extraction attempt failed: {str(e)}"
-                logger.error(error_msg, exc_info=True)
-                try:
-                    from utils.error_logging import log_error
-                    log_error(error_msg, error_type="ERROR", include_traceback=True, source="LLMService.process_extraction_and_formatting")
-                except ImportError:
-                    # Fallback logging
-                    with open("./logs/workapp_errors.log", "a") as error_log:
-                        error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - ERROR - {error_msg}\n")
-                        import traceback
-                        error_log.write(traceback.format_exc())
-                
-                # Create a fallback response with an error message
-                extraction_response = {
-                    "content": "I'm sorry, but I encountered an issue while processing your query. Please try again or rephrase your question.",
-                    "error": error_msg,
-                    "model": model_config.extraction_model,
-                    "usage": {"total_tokens": 0}
-                }
+            extraction_response = await self.async_chat_completion(
+                prompt=final_prompt,
+                model=model_config.extraction_model,
+                max_tokens=model_config.max_tokens,
+                validate_json=False  # Disable validation for the final attempt
+            )
         
-        # Check for empty or very short extraction result
-        if not extraction_response.get("content") or len(extraction_response.get("content", "")) < 10:
-            error_msg = f"Extraction returned empty or very short result: '{extraction_response.get('content', '')}'"
-            logger.warning(error_msg)
-            # Log to central error log
-            try:
-                from utils.error_logging import log_error
-                log_error(error_msg, error_type="WARNING", source="LLMService.process_extraction_and_formatting")
-            except ImportError:
-                # Fallback to simple file logging
-                try:
-                    from utils.config_unified import app_config
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
-                except ImportError:
-                    # If config is not available, use a default path
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
-                
-                # Create directory if it doesn't exist
-                os.makedirs(os.path.dirname(error_log_path), exist_ok=True)
-                
-                with open(error_log_path, "a") as error_log:
-                    error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - WARNING - {error_msg}\n")
-            
-            # If content is empty but no error is set, add a generic error
-            if "error" not in extraction_response:
-                extraction_response["error"] = "Empty or very short extraction result"
-            
-            # Ensure there's at least some content for formatting
-            if not extraction_response.get("content"):
-                extraction_response["content"] = "No answer could be extracted from the provided context."
+        # If there's still an error, return the error
+        if "error" in extraction_response:
+            logger.error(f"Extraction failed after {retry_count + 1} attempts: {extraction_response.get('error', 'Unknown error')}")
+            return extraction_response, {"error": "Extraction failed after multiple attempts"}
         
         # Generate formatting prompt
-        formatting_prompt = self.generate_formatting_prompt(extraction_response.get("content", ""))
+        formatting_prompt = self.generate_formatting_prompt(extraction_response["content"])
         
         # Get formatting result
-        start_time = time.time()
-        formatting_response = None
+        formatting_response = await self.async_chat_completion(
+            prompt=formatting_prompt,
+            model=model_config.formatting_model,
+            max_tokens=model_config.max_tokens
+        )
         
-        try:
-            formatting_response = await self.async_chat_completion(
-                prompt=formatting_prompt,
-                model=model_config.formatting_model,
-                max_tokens=model_config.max_tokens
-            )
-            formatting_time = time.time() - start_time
-            logger.info(f"Formatting completed in {formatting_time:.2f} seconds")
-        except (asyncio.TimeoutError, openai.RateLimitError, openai.APIConnectionError) as e:
-            error_type = "Timeout" if isinstance(e, asyncio.TimeoutError) else \
-                        "Rate limit" if isinstance(e, openai.RateLimitError) else "API connection error"
-            error_msg = f"{error_type} during formatting: {str(e)}"
-            logger.error(error_msg)
-            try:
-                from utils.error_logging import log_error
-                log_error(error_msg, error_type="ERROR", source="LLMService.process_extraction_and_formatting")
-            except ImportError:
-                # Fallback logging
-                with open("./logs/workapp_errors.log", "a") as error_log:
-                    error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - ERROR - {error_msg}\n")
-            formatting_response = {"error": error_msg, "content": extraction_response.get("content", "")}
-        except Exception as e:
-            error_msg = f"Unexpected error during formatting: {str(e)}"
-            logger.error(error_msg, exc_info=True)
-            try:
-                from utils.error_logging import log_error
-                log_error(error_msg, error_type="ERROR", include_traceback=True, source="LLMService.process_extraction_and_formatting")
-            except ImportError:
-                # Fallback logging
-                with open("./logs/workapp_errors.log", "a") as error_log:
-                    error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - ERROR - {error_msg}\n")
-                    import traceback
-                    error_log.write(traceback.format_exc())
-            formatting_response = {"error": error_msg, "content": extraction_response.get("content", "")}
-        
-        # Check for errors in formatting and retry if needed
+        # If there's an error in formatting, retry once with a simpler prompt
         if "error" in formatting_response:
-            error_msg = f"Formatting failed: {formatting_response['error']}, retrying with simpler prompt"
-            logger.warning(error_msg)
-            # Log to central error log
-            try:
-                from utils.error_logging import log_error
-                log_error(error_msg, error_type="WARNING", source="LLMService.process_extraction_and_formatting")
-            except ImportError:
-                # Fallback to simple file logging
-                try:
-                    from utils.config_unified import app_config
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
-                except ImportError:
-                    # If config is not available, use a default path
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
-                
-                # Create directory if it doesn't exist
-                os.makedirs(os.path.dirname(error_log_path), exist_ok=True)
-                
-                with open(error_log_path, "a") as error_log:
-                    error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - WARNING - {error_msg}\n")
+            logger.warning("Error in formatting, retrying with simpler prompt")
             
             # Simplify the formatting prompt
             simple_formatting_prompt = f"Format the following text to be clear and readable:\n\n{extraction_response['content']}"
             
             # Retry formatting
-            start_time = time.time()
             formatting_response = await self.async_chat_completion(
                 prompt=simple_formatting_prompt,
                 model=model_config.formatting_model,
                 max_tokens=model_config.max_tokens
             )
-            formatting_time = time.time() - start_time
-            logger.info(f"Retry formatting with simpler prompt completed in {formatting_time:.2f} seconds")
-            
-            # If still failing, try with an even simpler approach
-            if "error" in formatting_response:
-                error_msg = "Formatting still failed with simpler prompt, using raw extraction result"
-                logger.warning(error_msg)
-                # Log to central error log
-                try:
-                    from utils.error_logging import log_error
-                    log_error(error_msg, error_type="WARNING", source="LLMService.process_extraction_and_formatting")
-                except ImportError:
-                    # Fallback to simple file logging
-                    try:
-                        from utils.config_unified import app_config
-                        error_log_path = app_config.error_log_path
-                    except ImportError:
-                        # If config is not available, use a default path
-                        error_log_path = "./logs/workapp_errors.log"
-                    
-                    # Create directory if it doesn't exist
-                    os.makedirs(os.path.dirname(error_log_path), exist_ok=True)
-                    
-                    with open(error_log_path, "a") as error_log:
-                        error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - WARNING - {error_msg}\n")
-                
-                # Create a minimal formatting response using the raw extraction
-                formatting_response = {
-                    "content": extraction_response["content"],
-                    "model": extraction_response["model"],
-                    "usage": extraction_response["usage"],
-                    "warning": "Formatting failed, using raw extraction result"
-                }
-        
-        # Check for empty or very short formatting result
-        if not formatting_response.get("content") or len(formatting_response.get("content", "")) < 10:
-            error_msg = f"Formatting returned empty or very short result: '{formatting_response.get('content', '')}'"
-            logger.warning(error_msg)
-            # Log to central error log
-            try:
-                from utils.error_logging import log_error
-                log_error(error_msg, error_type="WARNING", source="LLMService.process_extraction_and_formatting")
-            except ImportError:
-                # Fallback to simple file logging
-                try:
-                    from utils.config_unified import app_config
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
-                except ImportError:
-                    # If config is not available, use a default path
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
-                
-                # Create directory if it doesn't exist
-                os.makedirs(os.path.dirname(error_log_path), exist_ok=True)
-                
-                with open(error_log_path, "a") as error_log:
-                    error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - WARNING - {error_msg}\n")
         
         # Check formatting quality
         try:
@@ -1297,25 +954,6 @@ class LLMService:
                 if not quality_check:
                     warning_msg = "Formatting quality check failed - formatted answer may be missing key sections"
                     logger.warning(warning_msg)
-                    # Log to central error log
-                    try:
-                        from utils.error_logging import log_error
-                        log_error(warning_msg, error_type="WARNING", source="LLMService.process_extraction_and_formatting")
-                    except ImportError:
-                        # Fallback to simple file logging
-                        try:
-                            from utils.config_unified import app_config
-                            error_log_path = app_config.error_log_path
-                        except ImportError:
-                            # If config is not available, use a default path
-                            error_log_path = "./logs/workapp_errors.log"
-                        
-                        # Create directory if it doesn't exist
-                        os.makedirs(os.path.dirname(error_log_path), exist_ok=True)
-                        
-                        with open(error_log_path, "a") as error_log:
-                            error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - WARNING - {warning_msg}\n")
-                    # Add warning to the formatting response
                     formatting_response["warning"] = warning_msg
         except Exception as e:
             logger.error(f"Error in formatting quality check: {str(e)}")
@@ -1359,16 +997,13 @@ class LLMService:
                 except ImportError:
                     # Fallback to simple file logging
                     try:
-                        from utils.config_unified import app_config
-                        error_log_path = app_config.error_log_path
+                        from utils.config_unified import resolve_path
+                        fallback_log_path = resolve_path("./logs/workapp_errors.log", create_dir=True)
                     except ImportError:
-                        # If config is not available, use a default path
-                        error_log_path = "./logs/workapp_errors.log"
+                        fallback_log_path = "./logs/workapp_errors.log"
+                        os.makedirs(os.path.dirname(fallback_log_path), exist_ok=True)
                     
-                    # Create directory if it doesn't exist
-                    os.makedirs(os.path.dirname(error_log_path), exist_ok=True)
-                    
-                    with open(error_log_path, "a") as error_log:
+                    with open(fallback_log_path, "a") as error_log:
                         error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - ERROR - Error generating answer: {error_msg}\n")
                 return {
                     "content": f"Error: {error_msg}",
@@ -1378,29 +1013,6 @@ class LLMService:
                 }
                 
             # Return the formatted answer with metadata
-            # Log the raw answer before formatting
-            logger.info(f"Raw extraction answer: {extraction_response['content'][:100]}...")
-            # Log the final formatted answer
-            logger.info(f"Final formatted answer: {formatting_response['content'][:100]}...")
-            
-            # Log detailed answers for analysis
-            try:
-                from utils.config_unified import app_config
-                raw_log_path = os.path.join(os.path.dirname(app_config.error_log_path), "workapp_raw_answers.log")
-            except ImportError:
-                # If config is not available, use a default path
-                raw_log_path = "./logs/workapp_raw_answers.log"
-            
-            # Create directory if it doesn't exist
-            os.makedirs(os.path.dirname(raw_log_path), exist_ok=True)
-            
-            with open(raw_log_path, "a") as raw_log:
-                raw_log.write(f"\n--- {time.strftime('%Y-%m-%d %H:%M:%S')} ---\n")
-                raw_log.write(f"Query: {query}\n")
-                raw_log.write(f"Raw extraction: {extraction_response['content']}\n")
-                raw_log.write(f"Formatted answer: {formatting_response['content']}\n")
-                raw_log.write("---\n")
-            
             return {
                 "content": formatting_response["content"],
                 "raw_extraction": extraction_response["content"],
@@ -1419,17 +1031,14 @@ class LLMService:
             except ImportError:
                 # Fallback to simple file logging
                 try:
-                    from utils.config_unified import app_config
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
+                    from utils.config_unified import resolve_path
+                    fallback_log_path = resolve_path("./logs/workapp_errors.log", create_dir=True)
                 except ImportError:
-                    # If config is not available, use a default path
-                    error_log_path = os.path.join(app_config.log_directory, "workapp_errors.log")
-                
-                # Create directory if it doesn't exist
-                os.makedirs(os.path.dirname(error_log_path), exist_ok=True)
+                    fallback_log_path = "./logs/workapp_errors.log"
+                    os.makedirs(os.path.dirname(fallback_log_path), exist_ok=True)
                 
                 import traceback
-                with open(error_log_path, "a") as error_log:
+                with open(fallback_log_path, "a") as error_log:
                     error_log.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} - ERROR - {error_msg}\n")
                     error_log.write(traceback.format_exc())
                     error_log.write("\n")

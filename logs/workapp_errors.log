@@ -73,3 +73,6 @@
 {"timestamp": "2025-05-23T22:06:01.001551", "type": "WARNING", "message": "JSON validation failed (attempt 2/3), retrying with reduced context", "source": "LLMService.process_extraction_and_formatting"}
 {"timestamp": "2025-05-23T22:06:01.002726", "type": "WARNING", "message": "JSON validation failed (attempt 3/3), retrying with reduced context", "source": "LLMService.process_extraction_and_formatting"}
 {"timestamp": "2025-05-23T22:06:01.003862", "type": "WARNING", "message": "JSON validation or extraction still failed after 3 attempts, proceeding with final attempt using minimal context", "source": "LLMService.process_extraction_and_formatting"}
+{"timestamp": "2025-05-28T02:56:13.514478", "type": "WARNING", "message": "Formatting quality check failed - formatted answer may be missing key sections", "source": "LLMService.process_extraction_and_formatting"}
+{"timestamp": "2025-05-28T02:57:05.726926", "type": "WARNING", "message": "Formatting quality check failed - formatted answer may be missing key sections", "source": "LLMService.process_extraction_and_formatting"}
+{"timestamp": "2025-05-28T02:57:37.244971", "type": "WARNING", "message": "Formatting quality check failed - formatted answer may be missing key sections", "source": "LLMService.process_extraction_and_formatting"}

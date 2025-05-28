@@ -2,6 +2,12 @@
 
 Trigger with `/02-modularize.md`. Moves files into feature‑based packages.
 
+Process to follow to resolve write_to_file file truncation issues with documents that are more than 500 lines: 
+1. You need to break the document in to 4 seperate files, each with a maximum of 500 lines of code.
+2. Make your edits to each of these file chunks
+3. Once edits are complete, merge the edited chunks together.
+
+
 ---
 
 ## 1 · Create Packages

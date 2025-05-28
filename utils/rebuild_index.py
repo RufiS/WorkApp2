@@ -10,7 +10,7 @@ import shutil
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.config_unified import resolve_path, retrieval_config
-from utils.document_processor_unified import DocumentProcessor
+from core.document_processor_unified import DocumentProcessor
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')

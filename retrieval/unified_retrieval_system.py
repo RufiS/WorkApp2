@@ -5,8 +5,8 @@ import os
 from typing import List, Dict, Any, Optional, Tuple, Union
 
 from utils.config_unified import retrieval_config, performance_config
-from utils.document_processor_unified import DocumentProcessor
-from utils.error_handling.enhanced_decorators import with_timing, with_error_tracking
+from core.document_processor_unified import DocumentProcessor
+from error_handling.enhanced_decorators import with_timing, with_error_tracking
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -403,7 +403,7 @@ class UnifiedRetrievalSystem:
         """
         try:
             from utils.text_processing.context_enhancement.enhanced_context_processor import EnhancedContextProcessor
-            from utils.llm_service import LLMService
+            from llm.llm_service import LLMService
         except ImportError:
             logger.error("Failed to import required modules for query processing")
             return {
@@ -456,7 +456,7 @@ class UnifiedRetrievalSystem:
         try:
             # Create LLM service if not available
             from utils.config_unified import app_config
-            from utils.llm_service_enhanced import LLMService
+            from llm.llm_service_enhanced import LLMService
             from utils.llm_service_enhanced import LLMService
             llm_service = LLMService(app_config.api_keys.get("openai", ""))
             answer_data = llm_service.generate_answer(query, str(context))

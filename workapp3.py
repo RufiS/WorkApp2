@@ -54,9 +54,9 @@ from utils.config_unified import (
     performance_config,
     config_manager
 )
-from utils.document_processor_unified import DocumentProcessor
+from core.document_processor_unified import DocumentProcessor
 from utils.llm_service_enhanced import LLMService
-from utils.unified_retrieval_system import UnifiedRetrievalSystem
+from retrieval.unified_retrieval_system import UnifiedRetrievalSystem
 from utils.index_management.index_manager_unified import index_manager
 from utils.text_processing.context_processing import clean_context, extract_hyperlinks
 from utils.error_handling.enhanced_decorators import with_advanced_retry, with_error_tracking
