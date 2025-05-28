@@ -37,7 +37,7 @@ except ImportError:
     
     def get_system_message() -> str:
         return "You are a helpful assistant that provides accurate information based on the context provided."
-from utils.error_handling.enhanced_decorators import with_advanced_retry, with_timing, with_error_tracking
+from error_handling.enhanced_decorators import with_advanced_retry, with_timing, with_error_tracking
 
 # Define JSON schema for LLM responses
 ANSWER_SCHEMA = {

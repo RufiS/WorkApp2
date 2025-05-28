@@ -26,7 +26,7 @@ from utils.index_management.index_operations import get_saved_chunk_params
 from utils.index_management.index_manager_unified import index_manager
 from utils.error_logging import query_logger
 from utils.error_handling.decorators import with_retry, with_error_handling, RetryableError
-from utils.error_handling.enhanced_decorators import with_advanced_retry, with_timing
+from error_handling.enhanced_decorators import with_advanced_retry, with_timing
 from utils.error_logging import log_error, log_warning
 
 # Setup logging
