@@ -5,12 +5,17 @@ import hashlib
 from typing import List, Dict, Any, Optional, Union
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import TextLoader, PyPDFLoader, UnstructuredWordDocumentLoader
+from langchain_community.document_loaders import (
+    TextLoader,
+    PyPDFLoader,
+    UnstructuredWordDocumentLoader,
+)
 
 from utils.pdf_hyperlink_loader import PDFHyperlinkLoader
-from utils.config_unified import performance_config
+from utils.config import performance_config
 
 logger = logging.getLogger(__name__)
+
 
 def get_file_loader(file_path: str):
     """
@@ -48,9 +53,14 @@ def get_file_loader(file_path: str):
     elif file_ext in [".docx", ".doc"]:
         return UnstructuredWordDocumentLoader(file_path)
     else:
-        raise ValueError(f"Unsupported file type: {file_ext}. Only PDF, TXT, and DOCX files are supported.")
+        raise ValueError(
+            f"Unsupported file type: {file_ext}. Only PDF, TXT, and DOCX files are supported."
+        )
 
-def load_and_chunk_document(file_path: str, chunk_size: int, chunk_overlap: int) -> List[Dict[str, Any]]:
+
+def load_and_chunk_document(
+    file_path: str, chunk_size: int, chunk_overlap: int
+) -> List[Dict[str, Any]]:
     """
     Load a document and split it into chunks with caching
 
@@ -127,11 +137,13 @@ def load_and_chunk_document(file_path: str, chunk_size: int, chunk_overlap: int)
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
             separators=["\n\n", "\n", " ", ""],
-            keep_separator=False
+            keep_separator=False,
         )
 
         # Log chunking parameters
-        logger.info(f"Chunking document {os.path.basename(file_path)} with size={chunk_size}, overlap={chunk_overlap}")
+        logger.info(
+            f"Chunking document {os.path.basename(file_path)} with size={chunk_size}, overlap={chunk_overlap}"
+        )
 
         # Split documents into chunks
         try:
@@ -152,7 +164,9 @@ def load_and_chunk_document(file_path: str, chunk_size: int, chunk_overlap: int)
         for i, chunk in enumerate(chunks):
             # Check for empty or whitespace-only chunks
             if not chunk.page_content or chunk.page_content.isspace():
-                logger.warning(f"Empty or whitespace-only chunk detected in {os.path.basename(file_path)}, chunk {i}")
+                logger.warning(
+                    f"Empty or whitespace-only chunk detected in {os.path.basename(file_path)}, chunk {i}"
+                )
                 empty_chunks_count += 1
                 continue
 
@@ -171,22 +185,21 @@ def load_and_chunk_document(file_path: str, chunk_size: int, chunk_overlap: int)
                 large_chunks_count += 1
 
             # Create chunk with enhanced metadata
-            formatted_chunks.append({
-                "id": f"{os.path.basename(file_path)}-{i}",
-                "text": chunk.page_content,
-                "metadata": {
-                    "source": file_path,
-                    "page": chunk.metadata.get("page", None),
-                    "chunk_index": i,
-                    "chunk_size": chunk_size,
-                    "doc_hash": doc_hash,
-                    "creation_time": time.time(),
-                    "chunk_params": {
-                        "size": chunk_size,
-                        "overlap": chunk_overlap
-                    }
+            formatted_chunks.append(
+                {
+                    "id": f"{os.path.basename(file_path)}-{i}",
+                    "text": chunk.page_content,
+                    "metadata": {
+                        "source": file_path,
+                        "page": chunk.metadata.get("page", None),
+                        "chunk_index": i,
+                        "chunk_size": chunk_size,
+                        "doc_hash": doc_hash,
+                        "creation_time": time.time(),
+                        "chunk_params": {"size": chunk_size, "overlap": chunk_overlap},
+                    },
                 }
-            })
+            )
 
         # Log warning if no valid chunks were found
         if not formatted_chunks:
@@ -194,20 +207,32 @@ def load_and_chunk_document(file_path: str, chunk_size: int, chunk_overlap: int)
             logger.error(error_msg)
 
         # Log chunking metrics
-        total_chunk_size = sum(len(chunk.get('text', '')) for chunk in formatted_chunks)
-        empty_chunks_count = sum(1 for chunk in formatted_chunks if not chunk.get('text', '').strip())
-        small_chunks_count = sum(1 for chunk in formatted_chunks if 0 < len(chunk.get('text', '').strip()) < 50)
-        large_chunks_count = sum(1 for chunk in formatted_chunks if len(chunk.get('text', '')) > chunk_size * 1.5)
+        total_chunk_size = sum(len(chunk.get("text", "")) for chunk in formatted_chunks)
+        empty_chunks_count = sum(
+            1 for chunk in formatted_chunks if not chunk.get("text", "").strip()
+        )
+        small_chunks_count = sum(
+            1 for chunk in formatted_chunks if 0 < len(chunk.get("text", "").strip()) < 50
+        )
+        large_chunks_count = sum(
+            1 for chunk in formatted_chunks if len(chunk.get("text", "")) > chunk_size * 1.5
+        )
 
         # Handle small chunks by merging them with adjacent chunks
         if small_chunks_count > 0:
-            formatted_chunks = handle_small_chunks(formatted_chunks, min_size=50, file_path=file_path)
-            logger.info(f"Handled {small_chunks_count} small chunks, resulting in {len(formatted_chunks)} chunks")
+            formatted_chunks = handle_small_chunks(
+                formatted_chunks, min_size=50, file_path=file_path
+            )
+            logger.info(
+                f"Handled {small_chunks_count} small chunks, resulting in {len(formatted_chunks)} chunks"
+            )
 
         # Update metrics
         logger.info(f"Chunking summary for {os.path.basename(file_path)}:")
         logger.info(f"  - Total chunks: {len(formatted_chunks)}")
-        logger.info(f"  - Average chunk size: {total_chunk_size / len(formatted_chunks) if formatted_chunks else 0:.2f} chars")
+        logger.info(
+            f"  - Average chunk size: {total_chunk_size / len(formatted_chunks) if formatted_chunks else 0:.2f} chars"
+        )
         logger.info(f"  - Empty chunks skipped: {empty_chunks_count}")
         logger.info(f"  - Small chunks (<50 chars): {small_chunks_count}")
         logger.info(f"  - Large chunks (>{chunk_size * 1.5} chars): {large_chunks_count}")
@@ -218,7 +243,10 @@ def load_and_chunk_document(file_path: str, chunk_size: int, chunk_overlap: int)
         logger.error(error_msg)
         raise
 
-def handle_small_chunks(chunks: List[Dict[str, Any]], min_size: int = 50, file_path: str = None) -> List[Dict[str, Any]]:
+
+def handle_small_chunks(
+    chunks: List[Dict[str, Any]], min_size: int = 50, file_path: str = None
+) -> List[Dict[str, Any]]:
     """
     Handle abnormally small chunks by merging them with adjacent chunks or removing them
 
@@ -234,31 +262,35 @@ def handle_small_chunks(chunks: List[Dict[str, Any]], min_size: int = 50, file_p
         return []
 
     # Early return if only one chunk and it's too small
-    if len(chunks) == 1 and len(chunks[0].get('text', '')) < min_size:
-        logger.warning(f"Document contains only one small chunk ({len(chunks[0].get('text', ''))} chars)")
+    if len(chunks) == 1 and len(chunks[0].get("text", "")) < min_size:
+        logger.warning(
+            f"Document contains only one small chunk ({len(chunks[0].get('text', ''))} chars)"
+        )
         return chunks  # Return as is, can't merge with anything
 
     result = []
     i = 0
     while i < len(chunks):
         current = chunks[i]
-        current_text = current.get('text', '')
+        current_text = current.get("text", "")
 
         # If current chunk is too small
         if len(current_text) < min_size:
             file_name = os.path.basename(file_path) if file_path else "unknown"
-            logger.warning(f"Abnormally small chunk detected in {file_name}, chunk {i}: {len(current_text)} chars")
+            logger.warning(
+                f"Abnormally small chunk detected in {file_name}, chunk {i}: {len(current_text)} chars"
+            )
 
             # Try to merge with next chunk if available
             if i + 1 < len(chunks):
                 next_chunk = chunks[i + 1]
-                next_text = next_chunk.get('text', '')
+                next_text = next_chunk.get("text", "")
 
                 # Create merged chunk
                 merged = current.copy()
-                merged['text'] = current_text + " " + next_text
-                merged['merged'] = True
-                merged['original_indices'] = [i, i + 1]
+                merged["text"] = current_text + " " + next_text
+                merged["merged"] = True
+                merged["original_indices"] = [i, i + 1]
 
                 result.append(merged)
                 i += 2  # Skip the next chunk since we merged it
@@ -267,13 +299,17 @@ def handle_small_chunks(chunks: List[Dict[str, Any]], min_size: int = 50, file_p
                 # If this is the last chunk, try to merge with previous
                 if result:  # If we have previous chunks
                     prev = result.pop()  # Remove the last chunk
-                    prev_text = prev.get('text', '')
+                    prev_text = prev.get("text", "")
 
                     # Create merged chunk
                     merged = prev.copy()
-                    merged['text'] = prev_text + " " + current_text
-                    merged['merged'] = True
-                    merged['original_indices'] = [i-1, i] if 'original_indices' not in prev else prev['original_indices'] + [i]
+                    merged["text"] = prev_text + " " + current_text
+                    merged["merged"] = True
+                    merged["original_indices"] = (
+                        [i - 1, i]
+                        if "original_indices" not in prev
+                        else prev["original_indices"] + [i]
+                    )
 
                     result.append(merged)
                     logger.info(f"Merged small chunk {i} with previous chunk")
@@ -287,6 +323,7 @@ def handle_small_chunks(chunks: List[Dict[str, Any]], min_size: int = 50, file_p
             i += 1
 
     return result
+
 
 def compute_document_hash(file_path: str) -> str:
     """
@@ -307,7 +344,7 @@ def compute_document_hash(file_path: str) -> str:
 
         # Use a buffer to handle large files efficiently
         hasher = hashlib.sha256()
-        with open(file_path, 'rb') as f:
+        with open(file_path, "rb") as f:
             # Read and update hash in chunks of 4K
             for byte_block in iter(lambda: f.read(4096), b""):
                 hasher.update(byte_block)
@@ -328,6 +365,7 @@ def compute_document_hash(file_path: str) -> str:
         logger.warning(f"Error computing hash for {file_path}: {str(e)}")
         # Return a fallback hash based on filename and modification time
         return compute_fallback_hash(file_path)
+
 
 def compute_fallback_hash(file_path: str) -> str:
     """

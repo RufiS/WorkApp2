@@ -18,13 +18,14 @@ TERM_DISTINCTION_STYLE = """
     color: #cc0000;
 """
 
+
 def get_html_wrapper(content: str, style: str) -> str:
     """Wrap content in a styled div
-    
+
     Args:
         content: The HTML content to wrap
         style: CSS styles to apply
-        
+
     Returns:
         HTML string with wrapped content
     """

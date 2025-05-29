@@ -5,8 +5,8 @@ from utils.prompts.system_message import get_system_message
 from utils.prompts.sanitizer import sanitize_input
 
 __all__ = [
-    'generate_extraction_prompt',
-    'generate_formatting_prompt',
-    'get_system_message',
-    'sanitize_input'
+    "generate_extraction_prompt",
+    "generate_formatting_prompt",
+    "get_system_message",
+    "sanitize_input",
 ]

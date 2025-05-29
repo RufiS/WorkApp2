@@ -5,9 +5,11 @@ import os
 from dataclasses import dataclass, field
 from typing import List, Dict, Any, Optional
 
+
 @dataclass
 class ChunkCacheEntry:
     """Cache entry for document chunks"""
+
     chunks: List[Dict[str, Any]]
     timestamp: float = field(default_factory=time.time)
     ttl: float = 3600 * 24  # Time to live in seconds (default: 24 hours)
@@ -15,6 +17,7 @@ class ChunkCacheEntry:
     def is_expired(self) -> bool:
         """Check if the cache entry is expired"""
         return time.time() - self.timestamp > self.ttl
+
 
 def get_cache_key(file_path: str, chunk_size: int, chunk_overlap: int) -> str:
     """
@@ -36,14 +39,17 @@ def get_cache_key(file_path: str, chunk_size: int, chunk_overlap: int) -> str:
         "file_path": file_path,
         "mtime": mtime,
         "chunk_size": chunk_size,
-        "chunk_overlap": chunk_overlap
+        "chunk_overlap": chunk_overlap,
     }
 
     # Convert to JSON and hash
     params_json = json.dumps(params_dict, sort_keys=True)
     return hashlib.md5(params_json.encode()).hexdigest()
 
-def add_to_cache(cache: Dict[str, Any], key: str, chunks: List[Dict[str, Any]], ttl: Optional[float] = None) -> None:
+
+def add_to_cache(
+    cache: Dict[str, Any], key: str, chunks: List[Dict[str, Any]], ttl: Optional[float] = None
+) -> None:
     """
     Add chunks to the cache
 
@@ -81,6 +87,7 @@ def add_to_cache(cache: Dict[str, Any], key: str, chunks: List[Dict[str, Any]], 
         except Exception as e:
             # Log the error and continue with the current entry
             print(f"Error removing oldest cache entry: {str(e)}")
+
 
 def get_from_cache(cache: Dict[str, Any], key: str) -> Optional[List[Dict[str, Any]]]:
     """

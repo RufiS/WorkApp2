@@ -4,7 +4,7 @@
 def get_system_message() -> str:
     """
     Get the system message for the LLM service.
-    
+
     Returns:
         The system message string
     """

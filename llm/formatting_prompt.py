@@ -7,15 +7,16 @@ from utils.prompts.sanitizer import sanitize_input
 def generate_formatting_prompt(raw_answer: str) -> str:
     """
     Generate a prompt for formatting the raw answer.
-    
+
     Args:
         raw_answer: The raw answer from the extraction model
-        
+
     Returns:
         A formatted prompt string
     """
     raw_answer = sanitize_input(raw_answer)
-    return textwrap.dedent(f"""
+    return textwrap.dedent(
+        f"""
         System: You are a formatting assistant for Karls Technology dispatchers.
                 If the draft reads exactly "Answer not found. Please contact a manager or fellow dispatcher.",
                 return it unchanged. Otherwise, format the answer as follows:
@@ -51,4 +52,5 @@ def generate_formatting_prompt(raw_answer: str) -> str:
         
 
         FINAL ANSWER:
-    """)
+    """
+    )

@@ -1,0 +1,936 @@
+"""Index Manager Module
+
+Handles embedding generation and FAISS index operations.
+Extracted from document_processor_unified.py for better modularity.
+"""
+
+import os
+import time
+import json
+import logging
+import shutil
+from typing import List, Dict, Tuple, Any, Optional, Union, Set, Sequence
+
+import numpy as np
+import faiss
+from sentence_transformers import SentenceTransformer
+
+from utils.config import retrieval_config, performance_config, resolve_path
+
+# Removed circular dependency - this engine doesn't need the coordinator
+from utils.error_logging import query_logger
+from utils.error_handling.decorators import with_retry, with_error_handling, RetryableError
+from error_handling.enhanced_decorators import with_advanced_retry, with_timing
+from utils.error_logging import log_error, log_warning
+
+# Setup logging
+logger = logging.getLogger(__name__)
+
+
+class IndexManager:
+    """Handles embedding generation and FAISS index operations"""
+
+    def __init__(self, embedding_model_name: str = None):
+        """
+        Initialize the index manager
+
+        Args:
+            embedding_model_name: Name of the embedding model to use (defaults to config value)
+        """
+        self.embedding_model_name = embedding_model_name or retrieval_config.embedding_model
+
+        # Initialize embedding model
+        self.embedding_model = SentenceTransformer(self.embedding_model_name)
+        self.embedding_dim = self.embedding_model.get_sentence_embedding_dimension()
+
+        # Initialize FAISS index
+        self.index = None
+        self.texts = []
+        self.chunks = []  # Alias for self.texts for backward compatibility
+
+        # Initialize GPU resource management
+        self.gpu_resources = None
+        self.index_on_gpu = False
+
+        # Initialize metrics
+        self.embedding_times = []
+        self.max_embedding_times = 100
+
+        # Check for GPU availability
+        self.gpu_available = self._check_gpu_availability()
+        if self.gpu_available:
+            logger.info("GPU is available for embeddings")
+        else:
+            logger.info("GPU is not available, using CPU for embeddings")
+
+        logger.info(f"Index manager initialized with model {self.embedding_model_name}")
+
+    def __del__(self):
+        """
+        Destructor to ensure GPU resources are cleaned up when the object is destroyed
+        """
+        try:
+            self._cleanup_gpu_resources()
+        except Exception as e:
+            # Don't raise exceptions in destructor
+            pass
+
+    def _check_gpu_availability(self) -> bool:
+        """Check if GPU is available for embeddings"""
+        try:
+            import torch
+
+            return torch.cuda.is_available()
+        except ImportError:
+            return False
+
+    def _initialize_gpu_resources(self) -> None:
+        """
+        Initialize GPU resources for FAISS operations
+
+        Raises:
+            RuntimeError: If GPU resources cannot be initialized
+        """
+        try:
+            if not self.gpu_available:
+                logger.debug("GPU not available, skipping GPU resource initialization")
+                return
+
+            if self.gpu_resources is None:
+                logger.info("Initializing GPU resources for FAISS")
+                self.gpu_resources = faiss.StandardGpuResources()
+
+                # Configure memory allocations for better resource management
+                # Set temporary memory to 256MB (can be adjusted based on available GPU memory)
+                temp_memory = 256 * 1024 * 1024  # 256MB
+                self.gpu_resources.setTempMemory(temp_memory)
+
+                logger.info(
+                    f"GPU resources initialized with {temp_memory // (1024*1024)}MB temporary memory"
+                )
+
+        except Exception as e:
+            error_msg = f"Failed to initialize GPU resources: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg, include_traceback=True)
+            # Don't raise exception, fall back to CPU
+            self.gpu_resources = None
+            logger.warning("Falling back to CPU-only FAISS operations")
+
+    def _cleanup_gpu_resources(self) -> None:
+        """
+        Explicitly cleanup GPU resources to prevent memory leaks
+        """
+        try:
+            # Move index to CPU before cleanup if it's on GPU
+            if self.index_on_gpu and self.index is not None:
+                logger.info("Moving index from GPU to CPU before resource cleanup")
+                self._move_index_to_cpu()
+
+            # Clean up GPU resources
+            if self.gpu_resources is not None:
+                logger.info("Cleaning up GPU resources")
+                # NOTE: faiss.StandardGpuResources doesn't have an explicit cleanup method
+                # but setting to None should trigger garbage collection
+                self.gpu_resources = None
+                self.index_on_gpu = False
+                logger.info("GPU resources cleaned up successfully")
+
+                # Force garbage collection to ensure GPU memory is released
+                import gc
+
+                gc.collect()
+
+                # Log GPU memory status if available
+                try:
+                    import torch
+
+                    if torch.cuda.is_available():
+                        current_memory = torch.cuda.memory_allocated()
+                        logger.debug(
+                            f"GPU memory after cleanup: {current_memory / (1024*1024):.2f}MB"
+                        )
+                except ImportError:
+                    pass
+
+        except Exception as e:
+            error_msg = f"Error during GPU resource cleanup: {str(e)}"
+            logger.warning(error_msg)
+            log_warning(error_msg, include_traceback=True)
+            # Continue execution even if cleanup fails
+
+    def _move_index_to_gpu(self) -> bool:
+        """
+        Move the current index to GPU if available and not already on GPU
+
+        Returns:
+            True if index was moved to GPU, False otherwise
+        """
+        try:
+            if not self.gpu_available or not performance_config.use_gpu_for_faiss:
+                return False
+
+            if self.index is None:
+                logger.warning("Cannot move None index to GPU")
+                return False
+
+            if self.index_on_gpu:
+                logger.debug("Index is already on GPU")
+                return True
+
+            # Initialize GPU resources if needed
+            if self.gpu_resources is None:
+                self._initialize_gpu_resources()
+
+            if self.gpu_resources is None:
+                logger.warning("GPU resources not available, cannot move index to GPU")
+                return False
+
+            logger.info("Moving index to GPU")
+            gpu_index = faiss.index_cpu_to_gpu(self.gpu_resources, 0, self.index)
+            self.index = gpu_index
+            self.index_on_gpu = True
+            logger.info("Index successfully moved to GPU")
+            return True
+
+        except Exception as e:
+            error_msg = f"Failed to move index to GPU: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg, include_traceback=True)
+            return False
+
+    def _move_index_to_cpu(self) -> bool:
+        """
+        Move the current index to CPU if it's currently on GPU
+
+        Returns:
+            True if index was moved to CPU, False otherwise
+        """
+        try:
+            if not self.index_on_gpu or self.index is None:
+                logger.debug("Index is already on CPU or is None")
+                return True
+
+            logger.info("Moving index from GPU to CPU")
+            cpu_index = faiss.index_gpu_to_cpu(self.index)
+            self.index = cpu_index
+            self.index_on_gpu = False
+            logger.info("Index successfully moved to CPU")
+            return True
+
+        except Exception as e:
+            error_msg = f"Failed to move index to CPU: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg, include_traceback=True)
+            return False
+
+    def has_index(self, index_dir: Optional[str] = None) -> bool:
+        """
+        Check if an index exists either in memory or on disk
+
+        Args:
+            index_dir: Directory to check for index files (defaults to config value)
+
+        Returns:
+            True if an index exists, False otherwise
+        """
+        # Check if index is loaded in memory
+        if self.index is not None and len(self.texts) > 0:
+            logger.info("Index is already loaded in memory")
+            return True
+
+        # Use configured index path if not specified
+        index_dir = index_dir or retrieval_config.index_path
+
+        # Resolve the path to ensure consistency
+        index_dir = resolve_path(index_dir, create_dir=True)
+
+        # Check if index exists on disk
+        index_file = os.path.join(index_dir, "index.faiss")
+        texts_file = os.path.join(index_dir, "texts.npy")
+        logger.debug(f"Resolved index directory for checking: {index_dir}")
+
+        # Check if files exist
+        files_exist = os.path.exists(index_file) and os.path.exists(texts_file)
+
+        if files_exist:
+            logger.info(f"Index files found at {index_file} and {texts_file}")
+        else:
+            logger.warning(f"Index files not found at {index_file} and/or {texts_file}")
+
+        return files_exist
+
+    def create_empty_index(self) -> None:
+        """
+        Create a new empty FAISS index
+        """
+        logger.info("Creating new empty FAISS index")
+
+        # Initialize empty index with correct dimensions
+        self.index = faiss.IndexFlatL2(self.embedding_dim)
+
+        # Initialize empty texts list
+        self.texts = []
+        self.chunks = []  # Alias for backward compatibility
+
+        logger.info(f"Created empty index with dimension {self.embedding_dim}")
+
+    @with_timing(threshold=1.0)
+    def batch_embed_chunks(
+        self, chunks: Sequence[Union[Dict[str, Any], str]], batch_size: Optional[int] = None
+    ) -> np.ndarray:
+        """
+        Embed document chunks in batches
+
+        Args:
+            chunks: List of document chunks (either dictionaries with 'text' key or strings)
+            batch_size: Size of batches for embedding (None for default)
+
+        Returns:
+            NumPy array of embeddings
+        """
+        # Sanity check: Ensure chunks is not None and is a list
+        if chunks is None:
+            logger.error("Cannot embed None chunks")
+            raise ValueError("chunks parameter cannot be None")
+
+        if not isinstance(chunks, list):
+            logger.error(f"chunks must be a list, got {type(chunks)}")
+            raise TypeError(f"chunks must be a list, got {type(chunks)}")
+
+        if len(chunks) == 0:
+            logger.warning("Empty chunks list provided for embedding")
+            return np.array([])
+
+        # Use configured batch size if not specified
+        batch_size = batch_size or performance_config.embedding_batch_size
+
+        # Sanity check: Ensure batch_size is positive
+        if batch_size <= 0:
+            logger.warning(f"Invalid batch size {batch_size}, using default of 32")
+            batch_size = 32
+
+        # Extract texts from chunks
+        texts = []
+        invalid_chunks = 0
+        for chunk in chunks:
+            if isinstance(chunk, dict) and "text" in chunk:
+                if not chunk["text"] or not isinstance(chunk["text"], str):
+                    logger.warning(f"Empty or non-string text in chunk: {chunk}")
+                    texts.append("")
+                    invalid_chunks += 1
+                else:
+                    texts.append(chunk["text"])
+            elif isinstance(chunk, str):
+                texts.append(chunk)
+            else:
+                logger.warning(f"Skipping invalid chunk format: {type(chunk)}")
+                # Add empty string as placeholder to maintain index alignment
+                texts.append("")
+                invalid_chunks += 1
+
+        # Sanity check: Log warning if too many invalid chunks
+        if invalid_chunks > 0:
+            logger.warning(
+                f"Found {invalid_chunks} invalid chunks out of {len(chunks)} total chunks"
+            )
+            if invalid_chunks / len(chunks) > 0.5:
+                logger.error(
+                    f"More than 50% of chunks are invalid ({invalid_chunks}/{len(chunks)})"
+                )
+
+        # Embed in batches
+        all_embeddings = []
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i : i + batch_size]
+
+            # Time the embedding process
+            start_time = time.time()
+            try:
+                batch_embeddings = self.embedding_model.encode(batch_texts)
+                embedding_time = time.time() - start_time
+
+                # Sanity check: Verify embedding dimensions
+                if batch_embeddings.shape[1] != self.embedding_dim:
+                    logger.error(
+                        f"Embedding dimension mismatch: got {batch_embeddings.shape[1]}, expected {self.embedding_dim}"
+                    )
+                    raise ValueError(
+                        f"Embedding dimension mismatch: got {batch_embeddings.shape[1]}, expected {self.embedding_dim}"
+                    )
+
+                # Update embedding times
+                self.embedding_times.append(embedding_time)
+                if len(self.embedding_times) > self.max_embedding_times:
+                    self.embedding_times = self.embedding_times[-self.max_embedding_times :]
+
+                all_embeddings.append(batch_embeddings)
+            except Exception as e:
+                logger.error(f"Error embedding batch {i//batch_size + 1}: {str(e)}")
+                # If this is the first batch and it fails, re-raise the exception
+                if i == 0:
+                    raise
+                # Otherwise, log the error and continue with remaining batches
+                logger.warning(
+                    f"Continuing with remaining batches after error in batch {i//batch_size + 1}"
+                )
+
+        # Sanity check: Ensure we have embeddings
+        if not all_embeddings:
+            logger.error("No embeddings were generated")
+            return np.array([])
+
+        # Concatenate all embeddings
+        result = np.vstack(all_embeddings)
+
+        # Final sanity check: Verify shape of result
+        if result.shape[0] != len(chunks):
+            logger.error(f"Embedding count mismatch: got {result.shape[0]}, expected {len(chunks)}")
+        if result.shape[1] != self.embedding_dim:
+            logger.error(
+                f"Final embedding dimension mismatch: got {result.shape[1]}, expected {self.embedding_dim}"
+            )
+
+        return result
+
+    def build_index(self, embeddings: np.ndarray) -> faiss.Index:
+        """
+        Build a FAISS index from embeddings
+
+        Args:
+            embeddings: NumPy array of embeddings
+
+        Returns:
+            FAISS index
+
+        Raises:
+            ValueError: If embedding dimensions don't match index dimensions
+            AssertionError: If embeddings array is empty or invalid
+        """
+        # Assert that embeddings array is valid
+        if embeddings is None or not isinstance(embeddings, np.ndarray):
+            error_msg = f"Invalid embeddings array: {type(embeddings)}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        if len(embeddings) == 0:
+            error_msg = "Empty embeddings array"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        # Assert that embedding dimensions match index dimensions
+        if embeddings.shape[1] != self.embedding_dim:
+            error_msg = f"Embedding dimensions ({embeddings.shape[1]}) don't match index dimensions ({self.embedding_dim})"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
+
+        # Create index
+        index = faiss.IndexFlatL2(self.embedding_dim)
+
+        # Apply FAISS optimizations if enabled
+        if performance_config.enable_faiss_optimization:
+            # Use IVF index for faster search with large datasets
+            if len(embeddings) > 1000:
+                nlist = min(int(np.sqrt(len(embeddings))), 100)  # Rule of thumb for nlist
+                quantizer = faiss.IndexFlatL2(self.embedding_dim)
+                index = faiss.IndexIVFFlat(quantizer, self.embedding_dim, nlist, faiss.METRIC_L2)
+                index.train(embeddings)
+
+            # Use GPU if available and enabled
+            if self.gpu_available and performance_config.use_gpu_for_faiss:
+                try:
+                    res = faiss.StandardGpuResources()
+                    index = faiss.index_cpu_to_gpu(res, 0, index)
+                    logger.info("Using GPU for FAISS index")
+                except Exception as e:
+                    logger.warning(f"Failed to use GPU for FAISS: {str(e)}")
+
+        # Add embeddings to index
+        index.add(embeddings)
+
+        # Verify that index dimensions match embedding dimensions
+        assert (
+            index.d == self.embedding_dim
+        ), f"Index dimensions ({index.d}) don't match embedding dimensions ({self.embedding_dim})"
+
+        return index
+
+    def create_index_from_chunks(
+        self, chunks: List[Dict[str, Any]]
+    ) -> Tuple[faiss.Index, List[Dict[str, Any]]]:
+        """
+        Create a FAISS index from document chunks
+
+        Args:
+            chunks: List of document chunks
+
+        Returns:
+            Tuple of (FAISS index, list of chunks)
+        """
+        # Store chunks
+        self.texts = chunks
+        self.chunks = chunks  # Keep both references in sync
+
+        # Embed chunks
+        embeddings = self.batch_embed_chunks(chunks)
+
+        # Build index
+        self.index = self.build_index(embeddings)
+
+        return self.index, self.chunks
+
+    def search(self, query: str, top_k: int = 5) -> List[Dict[str, Any]]:
+        """
+        Search for relevant chunks using the query
+
+        Args:
+            query: Query string
+            top_k: Number of top results to return
+
+        Returns:
+            List of relevant chunks with scores
+
+        Raises:
+            ValueError: If no index has been built
+        """
+        # Sanity check: Validate inputs
+        if not query or not isinstance(query, str):
+            logger.error(f"Invalid query: {query}")
+            raise ValueError(f"Query must be a non-empty string, got {type(query)}")
+
+        if not isinstance(top_k, int) or top_k <= 0:
+            logger.error(f"Invalid top_k value: {top_k}")
+            raise ValueError(f"top_k must be a positive integer, got {top_k}")
+
+        # Log query and parameters for instrumentation
+        start_time = time.time()
+        query_preview = query[:50] + "..." if len(query) > 50 else query
+        logger.info(f"Searching for query: '{query_preview}' with top_k={top_k}")
+
+        # Initialize metrics
+        search_type = "vector"
+        fallback_used = False
+
+        # Try to load index if it exists on disk but not in memory
+        if (self.index is None or not self.chunks) and self.has_index():
+            try:
+                self.load_index(resolve_path(retrieval_config.index_path))
+                logger.info("Index loaded on demand during search")
+            except Exception as e:
+                logger.error(f"Failed to load index during search: {str(e)}")
+                raise ValueError(f"Failed to load index: {str(e)}")
+
+        # Check again after attempted load
+        if self.index is None or not self.chunks:
+            raise ValueError("No index has been built. Process documents first.")
+
+        # Sanity check: Verify chunks list
+        if not isinstance(self.chunks, list):
+            logger.error(f"self.chunks is not a list: {type(self.chunks)}")
+            raise TypeError(f"self.chunks must be a list, got {type(self.chunks)}")
+
+        if len(self.chunks) == 0:
+            logger.warning("Empty chunks list, search will return no results")
+            return []
+
+        # Embed query
+        try:
+            query_embedding = self.embedding_model.encode([query])
+        except Exception as e:
+            logger.error(f"Error embedding query: {str(e)}")
+            raise ValueError(f"Failed to embed query: {str(e)}")
+
+        # Sanity check: Verify query embedding dimensions
+        if query_embedding.shape[1] != self.embedding_dim:
+            logger.error(
+                f"Query embedding dimension mismatch: got {query_embedding.shape[1]}, expected {self.embedding_dim}"
+            )
+            raise ValueError(
+                f"Query embedding dimension mismatch: got {query_embedding.shape[1]}, expected {self.embedding_dim}"
+            )
+
+        # Search index
+        safe_top_k = min(top_k, len(self.chunks))  # Ensure top_k doesn't exceed available chunks
+        if safe_top_k < top_k:
+            logger.info(f"Adjusted top_k from {top_k} to {safe_top_k} based on available chunks")
+
+        try:
+            scores, indices = self.index.search(query_embedding, safe_top_k)
+        except Exception as e:
+            logger.error(f"Error during FAISS search: {str(e)}")
+            raise ValueError(f"Search operation failed: {str(e)}")
+
+        # Sanity check: Verify search results
+        if indices.shape[0] == 0 or scores.shape[0] == 0:
+            logger.warning("Search returned empty results")
+            return []
+
+        if indices.shape[1] != safe_top_k or scores.shape[1] != safe_top_k:
+            logger.warning(
+                f"Search returned unexpected dimensions: indices {indices.shape}, scores {scores.shape}, expected ({1}, {safe_top_k})"
+            )
+
+        # Format results
+        results = []
+        for i, idx in enumerate(indices[0]):
+            if 0 <= idx < len(self.chunks):  # Ensure index is valid
+                try:
+                    chunk = (
+                        self.chunks[idx].copy()
+                        if isinstance(self.chunks[idx], dict)
+                        else {"text": self.chunks[idx]}
+                    )
+                    chunk["score"] = float(scores[0][i])  # Convert numpy float to Python float
+                    # Ensure metadata exists
+                    if "metadata" not in chunk:
+                        chunk["metadata"] = {"source": "unknown"}
+                    results.append(chunk)
+                except (IndexError, KeyError, AttributeError) as e:
+                    logger.warning(f"Error processing search result at index {idx}: {str(e)}")
+                    # Create a minimal valid result
+                    results.append(
+                        {
+                            "text": f"Error retrieving chunk {idx}",
+                            "score": float(scores[0][i]),
+                            "metadata": {"source": "unknown", "error": str(e)},
+                        }
+                    )
+            else:
+                logger.warning(
+                    f"Invalid index {idx} returned by search, valid range is 0-{len(self.chunks)-1}"
+                )
+
+        # Log search metrics
+        search_time = time.time() - start_time
+        logger.info(f"Search completed in {search_time:.4f}s, returned {len(results)} results")
+
+        # Log query metrics if enabled
+        if performance_config.log_query_metrics:
+            query_logger.log_query(
+                query=query,
+                latency=search_time,
+                hit_count=len(results),
+                metadata={
+                    "search_type": search_type,
+                    "top_k": top_k,
+                    "fallback_used": fallback_used,
+                },
+            )
+
+        return results
+
+    def clear_index(self, index_dir: Optional[str] = None) -> None:
+        """
+        Clear the index and all cached data
+
+        Args:
+            index_dir: Directory containing the index files to clear (defaults to config value)
+        """
+        # Clear index and texts
+        self.index = None
+        self.texts = []
+        self.chunks = []  # Keep alias in sync
+
+        # Use configured index path if not specified
+        index_dir = index_dir or retrieval_config.index_path
+
+        # Resolve the path to ensure consistency
+        index_dir = resolve_path(index_dir, create_dir=True)
+
+        # Clear index files if they exist
+        logger.debug(f"Resolved index directory for clearing: {index_dir}")
+        index_file = os.path.join(index_dir, "index.faiss")
+        texts_file = os.path.join(index_dir, "texts.npy")
+        metadata_file = os.path.join(index_dir, "metadata.json")
+
+        try:
+            # Create directory if it doesn't exist
+            os.makedirs(index_dir, exist_ok=True)
+
+            # Remove files if they exist
+            for file_path in [index_file, texts_file, metadata_file]:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    logger.info(f"Removed index file: {file_path}")
+        except Exception as e:
+            logger.error(f"Error clearing index files: {str(e)}")
+            log_error(f"Error clearing index files: {str(e)}", include_traceback=True)
+            raise
+
+        logger.info("Index cleared successfully")
+
+    def save_index(self, index_dir: Optional[str] = None, dry_run: bool = False) -> None:
+        """
+        Save the FAISS index and chunks to disk using atomic file operations
+
+        Args:
+            index_dir: Directory to save the index and chunks (defaults to config value)
+            dry_run: If True, skip saving to disk (preview only)
+
+        Raises:
+            ValueError: If no index has been built
+            IOError: If there's an I/O error during file writing
+            OSError: If there's an OS error during atomic operations
+        """
+        if self.index is None or not self.texts:
+            raise ValueError("No index has been built. Process documents first.")
+
+        # Use configured index path if not specified
+        index_dir = index_dir or retrieval_config.index_path
+
+        # Resolve the path to ensure consistency
+        index_dir = resolve_path(index_dir, create_dir=True)
+
+        # If in dry-run mode, log what would happen but don't save
+        if dry_run:
+            logger.info(f"[DRY RUN] Would save index with {len(self.chunks)} chunks to {index_dir}")
+            logger.debug(f"Resolved index directory for saving: {index_dir}")
+            return
+
+        # Create directory if it doesn't exist
+        logger.debug(f"Resolved index directory for saving: {index_dir}")
+        os.makedirs(index_dir, exist_ok=True)
+
+        # Create a lock file to indicate that an update is in progress
+        logger.debug(f"Resolved index directory for saving: {index_dir}")
+        lock_path = os.path.join(index_dir, "index.lock")
+        with open(lock_path, "w") as lock_file:
+            lock_file.write(f"Update in progress: {time.time()}")
+
+        logger.debug(f"Resolved index directory for saving: {index_dir}")
+        # Define paths for files and their temporary versions
+        index_path = os.path.join(index_dir, "index.faiss")
+        temp_index_path = os.path.join(index_dir, "index.faiss.tmp")
+        texts_path = os.path.join(index_dir, "texts.npy")
+        temp_texts_path = os.path.join(index_dir, "texts.npy.tmp")
+        metadata_path = os.path.join(index_dir, "metadata.json")
+        temp_metadata_path = os.path.join(index_dir, "metadata.json.tmp")
+
+        # Check if index is on GPU before converting
+        if self.gpu_available and hasattr(self.index, "getDevice") and self.index.getDevice() >= 0:
+            cpu_index = faiss.index_gpu_to_cpu(self.index)
+        else:
+            cpu_index = self.index
+
+        # Defensive check before saving
+        if not self.texts or len(self.texts) == 0:
+            logger.error("Attempting to save index with empty texts list!")
+        else:
+            logger.info(f"Preparing to save {len(self.texts)} chunks to {texts_path}")
+
+        # Write index to temporary file
+        try:
+            faiss.write_index(cpu_index, temp_index_path)
+        except IOError as e:
+            raise IOError(f"Failed to write index to temporary file: {str(e)}") from e
+
+        # Save chunks to temporary file
+        try:
+            np.save(temp_texts_path, np.array(self.texts, dtype=object))
+            logger.info(f"Saved {len(self.texts)} chunks to {temp_texts_path}")
+        except IOError as e:
+            raise IOError(f"Failed to save texts to temporary file: {str(e)}") from e
+
+        # Prepare metadata
+        metadata = {
+            "embedding_model": self.embedding_model_name,
+            "embedding_dim": self.embedding_dim,
+            "last_updated": time.time(),
+            "index_size": self.index.ntotal if hasattr(self.index, "ntotal") else 0,
+        }
+
+        # Save metadata to temporary file
+        try:
+            with open(temp_metadata_path, "w") as f:
+                json.dump(metadata, f, indent=2)
+        except IOError as e:
+            raise IOError(f"Failed to write metadata to temporary file: {str(e)}") from e
+
+        # Use atomic replace operations to ensure consistency
+        try:
+            # Atomic replace for index file
+            os.replace(temp_index_path, index_path)
+
+            # Atomic replace for texts file
+            os.replace(temp_texts_path, texts_path)
+
+            # Atomic replace for metadata file
+            os.replace(temp_metadata_path, metadata_path)
+
+            logger.info(
+                f"Saved index and {len(self.texts)} chunks to {index_dir} using atomic operations"
+            )
+        except OSError as e:
+            error_msg = f"Error during atomic file operations: {str(e)}"
+            logger.error(error_msg)
+            log_error(error_msg)
+            raise OSError(error_msg) from e
+        finally:
+            # Remove the lock file regardless of success or failure
+            if os.path.exists(lock_path):
+                try:
+                    os.remove(lock_path)
+                except Exception as e:
+                    logger.warning(f"Failed to remove lock file: {str(e)}")
+
+    def load_index(self, index_dir: Optional[str] = None) -> None:
+        """
+        Load a FAISS index and chunks from disk
+
+        Args:
+            index_dir: Directory containing the index and chunks (defaults to config value)
+
+        Raises:
+            FileNotFoundError: If index files are not found
+            ValueError: If index parameters don't match
+        """
+        # Use configured index path if not specified
+        index_dir = index_dir or retrieval_config.index_path
+
+        # Resolve the path to ensure consistency
+        index_dir = resolve_path(index_dir, create_dir=False)
+
+        # Check if index files exist
+        index_path = os.path.join(index_dir, "index.faiss")
+        texts_file = os.path.join(index_dir, "texts.npy")
+        metadata_file = os.path.join(index_dir, "metadata.json")
+
+        # Check for required files
+        logger.debug(f"Resolved index directory for loading: {index_dir}")
+        if not os.path.exists(index_path):
+            raise FileNotFoundError(f"Index file not found at {index_path}")
+        if not os.path.exists(texts_file):
+            raise FileNotFoundError(f"Texts file not found at {texts_file}")
+
+        # Load metadata first to get embedding dimension if available
+        embedding_dim = self.embedding_dim  # Default to current model's dimension
+        if os.path.exists(metadata_file):
+            try:
+                logger.debug(f"Resolved index directory for loading: {index_dir}")
+                with open(metadata_file, "r") as f:
+                    metadata = json.load(f)
+                    if "embedding_dim" in metadata:
+                        embedding_dim = metadata["embedding_dim"]
+                        logger.info(f"Using embedding dimension {embedding_dim} from metadata")
+            except Exception as e:
+                logger.warning(f"Error reading metadata: {str(e)}")
+
+        # Load index
+        try:
+            self.index = faiss.read_index(index_path)
+            logger.info(f"Successfully loaded FAISS index from {index_path}")
+        except Exception as e:
+            logger.error(f"Error loading FAISS index: {str(e)}")
+            # Create a new index with the current model's dimension
+            logger.info(f"Creating new index with dimension {self.embedding_dim} due to load error")
+            self.index = faiss.IndexFlatL2(self.embedding_dim)
+            # We'll need to re-embed the texts with the current model
+            logger.warning("Index could not be loaded - you may need to reprocess your documents")
+
+        # Verify index dimensions match embedding model
+        if self.index is not None and hasattr(self.index, "d"):
+            index_dim = self.index.d
+            if index_dim != self.embedding_dim:
+                logger.warning(
+                    f"Index dimension ({index_dim}) doesn't match embedding model dimension ({self.embedding_dim})"
+                )
+                # Create a new index with the correct dimensions
+                logger.info(f"Creating new index with dimension {self.embedding_dim}")
+                new_index = faiss.IndexFlatL2(self.embedding_dim)
+                self.index = new_index
+                # We'll need to re-embed the texts with the current model
+                logger.warning(
+                    "Index dimensions mismatch - you may need to reprocess your documents"
+                )
+        else:
+            # If index is None or doesn't have 'd' attribute, create a new one
+            logger.warning("Index is not properly initialized")
+            self.index = faiss.IndexFlatL2(self.embedding_dim)
+            logger.info(f"Created new index with dimension {self.embedding_dim}")
+
+        # Use GPU if available and enabled
+        if self.gpu_available and performance_config.use_gpu_for_faiss and self.index is not None:
+            try:
+                res = faiss.StandardGpuResources()
+                self.index = faiss.index_cpu_to_gpu(res, 0, self.index)
+                logger.info("Using GPU for loaded FAISS index")
+            except Exception as e:
+                logger.warning(f"Failed to use GPU for loaded FAISS index: {str(e)}")
+
+        # Load texts
+        try:
+            texts_array = np.load(texts_file, allow_pickle=True)
+            if texts_array is not None and hasattr(texts_array, "tolist"):
+                self.texts = texts_array.tolist()
+                # Ensure texts is not None and is a list
+                if self.texts is None:
+                    self.texts = []
+                # Ensure chunks alias is updated
+                self.chunks = self.texts
+                logger.info(f"Loaded {len(self.texts)} chunks from {texts_file}")
+
+                # If we have texts and a new index, rebuild the index with the current embeddings
+                if (
+                    self.texts
+                    and len(self.texts) > 0
+                    and self.index is not None
+                    and self.index.ntotal == 0
+                ):
+                    try:
+                        logger.info("Rebuilding index with loaded texts")
+                        embeddings = self.batch_embed_chunks(self.texts)
+                        self.index.add(embeddings)
+                        logger.info(f"Rebuilt index with {len(self.texts)} chunks")
+                    except Exception as e:
+                        logger.error(f"Error rebuilding index: {str(e)}")
+            else:
+                logger.warning(f"Invalid texts array loaded from {texts_file}")
+                self.texts = []
+                self.chunks = []
+        except Exception as e:
+            logger.error(f"Error loading texts: {str(e)}")
+            self.texts = []
+            self.chunks = []
+            raise ValueError(f"Failed to load texts: {str(e)}")
+
+        logger.info(f"Successfully loaded index with {len(self.texts)} chunks from {index_dir}")
+
+    def embed_query(self, query: str) -> np.ndarray:
+        """
+        Embed a query string
+
+        Args:
+            query: Query string to embed
+
+        Returns:
+            NumPy array of query embedding
+        """
+        return self.embedding_model.encode([query])
+
+    def get_metrics(self) -> Dict[str, Any]:
+        """
+        Get index manager metrics
+
+        Returns:
+            Dictionary with index manager metrics
+        """
+        metrics = {
+            "gpu_available": self.gpu_available,
+            "index_on_gpu": self.index_on_gpu,
+            "embedding_dim": self.embedding_dim,
+            "embedding_model": self.embedding_model_name,
+            "total_chunks": len(self.chunks) if self.chunks else 0,
+            "index_size": self.index.ntotal if self.index else 0,
+        }
+
+        # Calculate average embedding time
+        if self.embedding_times:
+            metrics["avg_embedding_time"] = sum(self.embedding_times) / len(self.embedding_times)
+            metrics["min_embedding_time"] = min(self.embedding_times)
+            metrics["max_embedding_time"] = max(self.embedding_times)
+        else:
+            metrics["avg_embedding_time"] = 0.0
+            metrics["min_embedding_time"] = 0.0
+            metrics["max_embedding_time"] = 0.0
+
+        return metrics

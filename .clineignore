@@ -12,3 +12,12 @@
 /utils/ui/__pycache__
 /pyrightconfig.json
 /WorkApp2.zip
+/workflows/refactor_workflow.py
+/workflows/analyzers
+/workflows/config
+/workflows/processors
+/workflows/utils/
+/workflows/validators
+/workflows/__init__.py
+/workflows/__pycache__
+/check_refactor_candidates.py

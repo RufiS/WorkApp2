@@ -5,11 +5,11 @@
     "chunk_size": 1000,
     "chunk_overlap": 200,
     "top_k": 100,
-    "similarity_threshold": 0.35,
+    "similarity_threshold": 0.45,
     "max_context_length": 10000,
     "index_path": "./data/index",
     "enhanced_mode": false,
-    "vector_weight": 1.0
+    "vector_weight": 0.0
   },
   "model": {
     "extraction_model": "gpt-4-turbo",

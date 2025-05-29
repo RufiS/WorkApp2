@@ -8,7 +8,7 @@
   "enable_faiss_optimization": true,
   "use_gpu_for_faiss": true,
   "extract_pdf_hyperlinks": true,
-  "enable_reranking": true,
+  "enable_reranking": false,
   "enable_keyword_fallback": true,
   "log_query_metrics": true,
   "log_zero_hit_queries": true

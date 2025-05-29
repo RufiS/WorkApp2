@@ -1,0 +1,1 @@
+{"embedding_model": "all-MiniLM-L6-v2", "chunk_size": 1000, "chunk_overlap": 200, "embedding_dim": 384, "processed_files": ["KTI Dispatch Guide.pdf"]}
