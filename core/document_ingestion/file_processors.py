@@ -13,11 +13,11 @@ from langchain_community.document_loaders import (
     UnstructuredWordDocumentLoader,
 )
 
-from utils.config import performance_config
-from utils.pdf_hyperlink_loader import PDFHyperlinkLoader
+from core.config import performance_config
+from utils.loaders.pdf_hyperlink_loader import PDFHyperlinkLoader
 from utils.common.error_handler import CommonErrorHandler, with_error_context
-from utils.error_logging import log_error, log_warning
-from error_handling.enhanced_decorators import with_advanced_retry, with_timing
+from utils.logging.error_logging import log_error, log_warning
+from utils.error_handling.enhanced_decorators import with_advanced_retry, with_timing
 
 logger = logging.getLogger(__name__)
 

@@ -11,10 +11,10 @@ from typing import List, Dict, Any, Optional
 import numpy as np
 import faiss
 
-from utils.config import performance_config
-from utils.common.embedding_service import embedding_service
-from utils.error_logging import query_logger
-from utils.error_logging import log_error
+from core.config import performance_config
+from core.embeddings.embedding_service import embedding_service
+from utils.logging.error_logging import query_logger
+from utils.logging.error_logging import log_error
 
 # Setup logging
 logger = logging.getLogger(__name__)

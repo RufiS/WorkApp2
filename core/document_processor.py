@@ -10,10 +10,10 @@ from typing import List, Dict, Tuple, Any, Optional, Union
 import faiss
 import numpy as np
 
-from core.document_ingestion import DocumentIngestion
+from core.document_ingestion.ingestion_manager import DocumentIngestion
 from core.vector_index_engine import IndexManager
-from utils.config import retrieval_config
-from utils.error_logging import log_error, log_warning
+from core.config import retrieval_config
+from utils.logging.error_logging import log_error, log_warning
 
 # Setup logging
 logger = logging.getLogger(__name__)

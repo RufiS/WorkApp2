@@ -8,8 +8,8 @@ import faiss
 from sentence_transformers import SentenceTransformer
 
 from utils.common.error_handler import CommonErrorHandler
-from utils.error_logging import log_error
-from error_handling.enhanced_decorators import with_timing
+from utils.logging.error_logging import log_error
+from utils.error_handling.enhanced_decorators import with_timing
 
 logger = logging.getLogger(__name__)
 

@@ -1,0 +1,231 @@
+name: Refactor Validation
+on: 
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  validate:
+    name: Validate Refactoring Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for proper diff analysis
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov pyright ruff black vulture
+      
+      - name: Check PR size limits (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          chmod +x scripts/ci_check_diff_size.sh
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.sha }}"
+          export BASE_SHA HEAD_SHA
+          scripts/ci_check_diff_size.sh
+      
+      - name: Lint commit messages (PR only)
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "Checking commit message format..."
+          git log --format="%s" ${{ github.event.pull_request.base.sha }}..${{ github.sha }} | \
+          while read -r msg; do
+            if ! echo "$msg" | grep -E "^Phase[0-9]+-[A-Za-z0-9_-]+:" >/dev/null; then
+              echo "❌ Invalid commit message format: $msg"
+              echo "   Expected: Phase\d+-[A-Za-z0-9_-]+: Description"
+              exit 1
+            fi
+          done || exit 1
+          echo "✅ All commit messages follow required format"
+      
+      - name: Check code style and formatting
+        run: |
+          echo "Checking code formatting with Black..."
+          black --check --diff .
+          
+          echo "Checking imports and linting with Ruff..."
+          ruff check --select I .
+          
+          echo "✅ Code style checks passed"
+      
+      - name: Type checking
+        run: |
+          echo "Type checking with Pyright..."
+          
+          # Strict type checking for interfaces (when they exist)
+          if [ -d "core/interfaces" ]; then
+            echo "Running strict type check on interfaces..."
+            pyright --strict core/interfaces/
+          else
+            echo "No interfaces directory found, skipping strict type check"
+          fi
+          
+          # Standard type checking for internal modules
+          echo "Running standard type check on codebase..."
+          pyright core/ llm/ retrieval/ utils/ workapp3.py || {
+            echo "⚠️  Type checking found issues but continuing (internal modules)"
+          }
+          
+          echo "✅ Type checking completed"
+      
+      - name: Check type ignore comments
+        run: |
+          echo "Validating type ignore comments..."
+          if grep -r "# type: ignore[^[]" --include="*.py" . 2>/dev/null; then
+            echo "❌ Found # type: ignore without proper format"
+            echo "   Use: # type: ignore[error-type] # TODO: reason"
+            exit 1
+          else
+            echo "✅ All type ignore comments properly formatted"
+          fi
+      
+      - name: Run baseline tests
+        run: |
+          echo "Running baseline tests..."
+          pytest tests/legacy/ -v --tb=short --cov=. --cov-report=term-missing --cov-fail-under=80
+          echo "✅ Baseline tests passed"
+      
+      - name: Run smoke tests
+        run: |
+          echo "Running smoke tests..."
+          pytest tests/smoke/ -v --tb=short
+          echo "✅ Smoke tests passed"
+      
+      - name: Check performance regression
+        run: |
+          echo "Checking performance regression..."
+          python scripts/bench_baseline.py --fail-threshold=10
+          echo "✅ Performance within acceptable limits"
+      
+      - name: Generate test coverage report
+        run: |
+          echo "Generating coverage report..."
+          pytest tests/ --cov=. --cov-report=html --cov-report=xml
+          
+          # Store coverage percentage for potential baseline updates
+          coverage_pct=$(python -c "
+          import xml.etree.ElementTree as ET
+          try:
+              tree = ET.parse('coverage.xml')
+              root = tree.getroot()
+              coverage = float(root.attrib['line-rate']) * 100
+              print(f'{coverage:.1f}')
+          except:
+              print('80.0')  # fallback
+          ")
+          echo "Current coverage: ${coverage_pct}%"
+          echo "COVERAGE_PCT=${coverage_pct}" >> $GITHUB_ENV
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+      
+      - name: Check for large files
+        run: |
+          echo "Checking for oversized files..."
+          large_files=$(find . -name "*.py" -size +50k 2>/dev/null | grep -v "__pycache__" | head -5)
+          if [ -n "$large_files" ]; then
+            echo "⚠️  Large Python files found (>50KB):"
+            echo "$large_files"
+            echo "Consider breaking these into smaller modules"
+          else
+            echo "✅ All Python files within size limits"
+          fi
+
+  # Separate job for vulture dead code detection (report only)
+  dead-code-check:
+    name: Dead Code Detection
+    runs-on: ubuntu-latest
+    needs: validate
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install vulture
+        run: pip install vulture
+      
+      - name: Run vulture (report only)
+        run: |
+          echo "Running dead code detection..."
+          vulture . --min-confidence 80 --sort-by-size > vulture-report.txt 2>&1 || true
+          
+          if [ -s vulture-report.txt ]; then
+            echo "📊 Potential dead code found:"
+            head -20 vulture-report.txt
+            echo ""
+            echo "ℹ️  This is for information only. Manual review required before deletion."
+            echo "   Full report saved as artifact."
+          else
+            echo "✅ No obvious dead code detected"
+          fi
+      
+      - name: Upload vulture report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: vulture-dead-code-report
+          path: vulture-report.txt
+          retention-days: 30
+
+  # Security and dependency check
+  security-check:
+    name: Security & Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install safety
+        run: pip install safety
+      
+      - name: Check dependencies for security issues
+        run: |
+          echo "Checking dependencies for known security vulnerabilities..."
+          pip install -r requirements.txt
+          safety check --json > safety-report.json || {
+            echo "⚠️  Security vulnerabilities found in dependencies"
+            cat safety-report.json
+            echo "Please review and update vulnerable packages"
+          }
+          echo "✅ Security check completed"
+      
+      - name: Upload security report
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: security-report
+          path: safety-report.json
+          retention-days: 30

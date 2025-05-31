@@ -7,7 +7,7 @@ import json
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 
-from utils.config import performance_config
+from core.config import performance_config
 from utils.common.error_handler import CommonErrorHandler
 
 logger = logging.getLogger(__name__)

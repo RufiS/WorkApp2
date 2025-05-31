@@ -10,13 +10,13 @@ from typing import List, Dict, Tuple, Any, Optional, Union, Sequence
 import numpy as np
 import faiss
 
-from utils.config import retrieval_config, resolve_path
-from utils.common.embedding_service import embedding_service
-from utils.index_management.gpu_manager import gpu_manager
+from core.config import retrieval_config, resolve_path
+from core.embeddings.embedding_service import embedding_service
+from core.index_management.gpu_manager import gpu_manager
 from core.vector_index.index_builder import IndexBuilder
 from core.vector_index.storage_manager import StorageManager
 from core.vector_index.search_engine import SearchEngine
-from error_handling.enhanced_decorators import with_timing
+from utils.error_handling.enhanced_decorators import with_timing
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -76,7 +76,7 @@ class IndexManager:
         """
         # Check if index is loaded in memory
         if self.index is not None and len(self.texts) > 0:
-            logger.info("Index is already loaded in memory")
+            logger.debug("Index is already loaded in memory")
             return True
 
         # Delegate to storage manager for disk check

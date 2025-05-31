@@ -4,10 +4,10 @@ import logging
 from typing import List, Dict, Any, Set, Optional
 from sentence_transformers import SentenceTransformer
 
-from utils.config import retrieval_config, performance_config
+from core.config import retrieval_config, performance_config
 from utils.common.error_handler import CommonErrorHandler, with_error_context
 from utils.common.metrics_collector import metrics_collector
-from error_handling.enhanced_decorators import with_advanced_retry, with_timing
+from utils.error_handling.enhanced_decorators import with_advanced_retry, with_timing
 
 from .chunk_cache import ChunkCache
 from .file_processors import FileProcessor

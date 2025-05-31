@@ -10,10 +10,10 @@ import fcntl
 import errno
 from typing import Dict, Any, Optional
 
-from utils.config import retrieval_config, resolve_path
+from core.config import retrieval_config, resolve_path
 from utils.common.error_handler import CommonErrorHandler, with_error_context
 from utils.error_handling.decorators import with_retry
-from utils.error_logging import log_error
+from utils.logging.error_logging import log_error
 
 logger = logging.getLogger(__name__)
 

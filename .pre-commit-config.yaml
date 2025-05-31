@@ -1,0 +1,60 @@
+# Pre-commit hooks for WorkApp2 refactoring
+# Ensures code quality and consistency before commits
+
+repos:
+  - repo: https://github.com/psf/black
+    rev: 23.1.0
+    hooks:
+      - id: black
+        name: Format Python code with Black
+        description: Auto-format Python code for consistent style
+  
+  - repo: https://github.com/charliermarsh/ruff-pre-commit
+    rev: v0.0.254
+    hooks:
+      - id: ruff
+        name: Lint with Ruff
+        description: Fast Python linter with import sorting
+        args: [--fix, --select, I]  # Include import sorting
+  
+  - repo: local
+    hooks:
+      - id: pyright-strict-interfaces
+        name: Type check interfaces (strict)
+        description: Strict type checking for public interfaces
+        entry: bash -c 'if [ -d "core/interfaces" ]; then pyright --strict core/interfaces/; else echo "No interfaces directory found, skipping strict type check"; fi'
+        language: system
+        files: ^core/interfaces/
+        pass_filenames: false
+      
+      - id: pyright-standard
+        name: Type check codebase (standard)
+        description: Standard type checking for internal modules
+        entry: bash -c 'pyright core/ llm/ retrieval/ utils/ || true'  # Allow to proceed even with type errors in internal modules
+        language: system
+        pass_filenames: false
+      
+      - id: check-type-ignore-comments
+        name: Validate type ignore comments
+        description: Ensure all type ignores have reason comments
+        entry: bash -c 'if grep -r "# type: ignore[^[]" --include="*.py" . 2>/dev/null; then echo "❌ Found # type: ignore without reason comment. Use # type: ignore[error-type] # reason"; exit 1; else echo "✅ All type ignore comments are properly documented"; fi'
+        language: system
+        pass_filenames: false
+      
+      - id: check-todo-comments
+        name: Check TODO comments format
+        description: Ensure TODO comments are properly formatted
+        entry: bash -c 'if grep -r "# TODO[^:]" --include="*.py" . 2>/dev/null; then echo "⚠️  Found TODO without colon. Use # TODO: description"; else echo "✅ TODO comments properly formatted"; fi'
+        language: system
+        pass_filenames: false
+      
+      - id: check-file-size
+        name: Check file size limits
+        description: Ensure no single file exceeds reasonable size limits
+        entry: bash -c 'large_files=$(find . -name "*.py" -size +50k 2>/dev/null | grep -v "__pycache__" | head -5); if [ -n "$large_files" ]; then echo "⚠️  Large Python files found (>50KB):"; echo "$large_files"; echo "Consider breaking these into smaller modules"; else echo "✅ All Python files within size limits"; fi'
+        language: system
+        pass_filenames: false
+
+# Pre-commit configuration
+default_stages: [commit]
+fail_fast: false  # Run all hooks even if one fails

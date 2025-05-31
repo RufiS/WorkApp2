@@ -4,7 +4,7 @@ import logging
 import traceback
 import functools
 from typing import Optional, Type, Union, Tuple, Callable, Any
-from utils.error_logging import log_error, log_warning
+from utils.logging.error_logging import log_error, log_warning
 
 logger = logging.getLogger(__name__)
 

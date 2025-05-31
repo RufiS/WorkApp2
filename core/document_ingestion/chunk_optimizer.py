@@ -5,7 +5,7 @@ import logging
 from typing import List, Dict, Any
 
 from utils.common.error_handler import CommonErrorHandler
-from utils.error_logging import log_warning
+from utils.logging.error_logging import log_warning
 
 logger = logging.getLogger(__name__)
 

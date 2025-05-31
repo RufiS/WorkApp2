@@ -10,9 +10,9 @@ from typing import Optional
 import numpy as np
 import faiss
 
-from utils.config import performance_config
-from utils.index_management.gpu_manager import gpu_manager
-from utils.error_logging import log_error
+from core.config import performance_config
+from core.index_management.gpu_manager import gpu_manager
+from utils.logging.error_logging import log_error
 
 # Setup logging
 logger = logging.getLogger(__name__)

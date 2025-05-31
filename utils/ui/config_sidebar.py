@@ -3,7 +3,7 @@
 import streamlit as st
 from typing import Any
 
-from utils.config import (
+from core.config import (
     model_config,
     retrieval_config,
     performance_config,
@@ -89,7 +89,7 @@ def render_config_sidebar(args, doc_processor) -> bool:
         # Apply and Reset buttons
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🔄 Apply Settings", disabled=not has_pending_changes, help="Apply all pending configuration changes"):
+            if st.button("🔄 Apply Settings", help="Apply all pending configuration changes"):
                 # Apply all pending changes
                 retrieval_config.top_k = st.session_state.pending_config["retrieval_k"]
                 retrieval_config.similarity_threshold = st.session_state.pending_config["similarity_threshold"]
@@ -126,7 +126,7 @@ def render_config_sidebar(args, doc_processor) -> bool:
                 st.rerun()
                 
         with col2:
-            if st.button("↩️ Reset", disabled=not has_pending_changes, help="Reset all changes to current values"):
+            if st.button("↩️ Reset", help="Reset all changes to current values"):
                 # Reset pending config to current values
                 st.session_state.pending_config = {
                     "retrieval_k": retrieval_config.top_k,

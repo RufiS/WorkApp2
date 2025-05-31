@@ -1,0 +1,16 @@
+{
+  "p99_latency_ms": 500.0,
+  "peak_rss_mb": 256.0,
+  "timestamp": 1748573385.695707,
+  "git_commit": "970ffe641622689ca58199f9ae636f065770e716",
+  "version": "v0.legacy_monolith",
+  "measurement_details": {
+    "test_queries": [
+      "What is machine learning?",
+      "Explain artificial intelligence",
+      "How does vector search work?"
+    ],
+    "test_document_size_kb": 10,
+    "iterations": 10
+  }
+}

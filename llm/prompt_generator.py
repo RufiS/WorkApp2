@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 # Import prompt utilities
 try:
-    from utils.prompts.extraction_prompt import generate_extraction_prompt
-    from utils.prompts.formatting_prompt import generate_formatting_prompt, check_formatting_quality
-    from utils.prompts.system_message import get_system_message
+    from llm.prompts.extraction_prompt import generate_extraction_prompt
+    from llm.prompts.formatting_prompt import generate_formatting_prompt, check_formatting_quality
+    from llm.prompts.system_message import get_system_message
 except ImportError:
     # Define fallback functions if prompt modules are not available
     logger.warning("Prompt modules not found, using fallback prompts")

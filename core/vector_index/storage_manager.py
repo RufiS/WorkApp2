@@ -13,9 +13,9 @@ from typing import Optional, List, Dict, Any
 import numpy as np
 import faiss
 
-from utils.config import resolve_path
-from utils.index_management.gpu_manager import gpu_manager
-from utils.error_logging import log_error
+from core.config import resolve_path
+from core.index_management.gpu_manager import gpu_manager
+from utils.logging.error_logging import log_error
 
 # Setup logging
 logger = logging.getLogger(__name__)
