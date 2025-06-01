@@ -190,25 +190,21 @@ Key settings in `config.json`:
    - Processing time varies by document size
 
 3. **Ask Questions**
-   - General questions get comprehensive answers
-   - Specific questions get targeted responses
+   - Operational questions get comprehensive answers
+   - Policy-specific questions get targeted responses
    - Examples:
-     - "What is the main topic of this document?"
-     - "How do I configure the email settings?"
-     - "What are the safety requirements?"
+     - "What is our same-day cancellation policy?"
+     - "What are the standard appointment windows we offer?"
+     - "Do we accept checks or cash payments?"
+     - "What zip codes are covered in the Phoenix metro area?"
+     - "How do I handle a Pro AV monitoring alert ticket?"
 
 4. **Review Answers**
    - AI-generated responses based on document content
    - Source citations when available
-   - Debug mode shows retrieval details
+   - Instant access to company procedures and policies
 
 ### Advanced Features
-
-**Debug Mode**: Enable to see:
-- Retrieved document chunks
-- Similarity scores
-- Processing time metrics
-- Search engine details
 
 **Configuration Panel**: Adjust:
 - Search parameters
@@ -244,11 +240,21 @@ python test_complete_integration.py
 
 ### Test Query Examples
 ```python
-# Basic functionality test
-"What is the main purpose of this document?"
+# Dispatcher scheduling questions
+"What are the standard appointment windows we offer?"
+"What is our same-day cancellation policy?"
 
-# Domain-specific test (if using technical docs)
-"How do I troubleshoot connection issues?"
+# Pricing and payment questions
+"What is our hourly rate and fuel surcharge?"
+"Do we accept checks or cash payments?"
+
+# Service coverage questions
+"What zip codes are covered in the Phoenix metro area?"
+"Can we do this repair remotely or does it need an on-site visit?"
+
+# Procedure questions
+"How do I handle a Pro AV monitoring alert ticket?"
+"What information do I need to collect during a booking call?"
 ```
 
 ---
