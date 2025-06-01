@@ -119,7 +119,7 @@ class ModelConfig(BaseModel):
     openai_max_tokens: int = Field(1000, description="Maximum tokens for response", ge=10, le=4000)
 
     # Embedding settings
-    embedding_model: str = Field("text-embedding-ada-002", description="Embedding model name")
+    embedding_model: str = Field("all-MiniLM-L6-v2", description="Embedding model name")
     embedding_batch_size: int = Field(100, description="Batch size for embeddings", ge=1, le=1000)
 
     # Processing settings

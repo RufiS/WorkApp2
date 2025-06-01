@@ -12,7 +12,7 @@
 - **OpenAI API**: GPT-3.5 Turbo (bulletproof service discovery implemented)
   - **LLM Service Discovery**: Multi-strategy detection ensures mission-critical functionality never fails
   - **Service Auto-Detection**: 5 fallback strategies guarantee LLM access
-  - Embedding Model: `text-embedding-ada-002` (GPU accelerated but RETRIEVAL BROKEN)
+  - Embedding Model: `all-MiniLM-L6-v2` via SentenceTransformer (GPU accelerated, semantic understanding poor for dispatch domain)
   - Dual-model pipeline: extraction + formatting (concept good, implementation poor)
 - **GPU Acceleration**: RTX 3090 Ti operational for embedding calculations
   - **CUDA Integration**: Seamless GPU acceleration for all 221 chunks
@@ -44,12 +44,14 @@
 - **Version Control**: Git with good commit history
 - **Package Management**: Clean requirements.txt
 - **Environment**: Proper virtual environment support
+- **Code Quality**: Modern async patterns, clean import structure
 
 ## 🏗️ Architecture Status (MIXED)
 
 ### **✅ Infrastructure Patterns (Excellent)**
 - **Modular Architecture**: Clean separation achieved through reorganization
 - **Dependency Management**: Proper import structure and package organization
+- **Modern Async Patterns**: Uses contemporary asyncio.run() instead of deprecated patterns
 - **Configuration System**: Infrastructure works, parameters don't improve results
 - **Error Handling**: Robust technical error management
 

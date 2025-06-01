@@ -450,19 +450,25 @@ class AnswerPipeline:
         Returns:
             Dictionary containing the answer and metadata
         """
-        # Create an event loop if one doesn't exist
+        # Use modern async pattern
         try:
-            loop = asyncio.get_event_loop()
+            # Try to get existing event loop
+            loop = asyncio.get_running_loop()
+            # If we're already in an async context, create a task
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(
+                    asyncio.run,
+                    self.process_extraction_and_formatting(query, context)
+                )
+                extraction_response, formatting_response = future.result()
         except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        try:
-            # Run the async extraction and formatting process
-            extraction_response, formatting_response = loop.run_until_complete(
+            # No event loop running, use asyncio.run() directly
+            extraction_response, formatting_response = asyncio.run(
                 self.process_extraction_and_formatting(query, context)
             )
 
+        try:
             # Check for errors
             if "error" in extraction_response or "error" in formatting_response:
                 error_msg = extraction_response.get(
@@ -550,14 +556,14 @@ class AnswerPipeline:
         """
         from core.config import model_config
         from llm.pipeline.validation import ANSWER_SCHEMA
-        from llm.prompts.extraction_prompt import generate_extraction_prompt_v2, generate_extraction_prompt_legacy, generate_extraction_prompt_simple
+        from llm.prompts.extraction_prompt import generate_extraction_prompt_v2, generate_extraction_prompt_simple
 
         # Strategy definitions
         strategies = [
             ("v2_full", "Full V2 prompt with enhanced comprehensiveness"),
             ("v2_reduced", "V2 prompt with reduced context"),
             ("v2_simple", "Simplified V2 prompt"),
-            ("legacy_fallback", "Original legacy prompt"),
+            ("simple_fallback", "Simple prompt fallback"),
             ("content_extraction", "Extract usable content from any response")
         ]
 
@@ -603,9 +609,9 @@ class AnswerPipeline:
                         json_schema=ANSWER_SCHEMA,
                     )
 
-                elif strategy_name == "legacy_fallback":
-                    # Strategy 4: Legacy prompt as fallback
-                    prompt = generate_extraction_prompt_legacy(query, context)
+                elif strategy_name == "simple_fallback":
+                    # Strategy 4: Simple prompt as fallback
+                    prompt = generate_extraction_prompt_simple(query, context)
                     response = await self.llm_service.async_chat_completion(
                         prompt=prompt,
                         model=model_config.extraction_model,

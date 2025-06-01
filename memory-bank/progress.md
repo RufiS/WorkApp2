@@ -193,3 +193,13 @@ utils/          # Supporting utilities (properly organized)
 - ⚠️ **Documentation Standards**: Added critical reminders to prevent future overstatements
 
 **Result**: Memory bank now accurately reflects reality - enhanced chunking provides better infrastructure (28.57% vs 0.0% coverage) but semantic understanding gaps prevent users from completing tasks. Infrastructure improved, functional effectiveness unproven.
+
+**2025-06-01 05:50** - **🔧 CODE MAINTENANCE COMPLETED - DEPRECATION CLEANUP**:
+- ✅ **Deprecated File Removed**: `utils/ui/index.py` (explicitly marked as deprecated)
+- ✅ **Legacy Functions Eliminated**: `generate_extraction_prompt_legacy()`, `validate_json_output_legacy()` 
+- ✅ **Async Pattern Modernization**: Replaced `asyncio.new_event_loop()` with `asyncio.run()` patterns
+- ✅ **Import Structure Updated**: Modernized import statements in 5 core files
+- ✅ **Code Validation**: All imports verified working correctly, no functional impact
+- ✅ **Files Updated**: `core/controllers/query_controller.py`, `llm/pipeline/answer_pipeline.py`, `llm/pipeline/validation.py`, `llm/prompts/extraction_prompt.py`, `llm/prompts/__init__.py`
+
+**Result**: Codebase modernized with deprecated patterns removed. No functional changes - purely code maintenance and quality improvement.

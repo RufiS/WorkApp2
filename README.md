@@ -417,6 +417,7 @@ streamlit run workapp3.py
 
 ### Code Standards
 - **Architecture**: Follow existing modular structure
+- **Code Quality**: Modern async patterns, clean import structure
 - **Testing**: Add tests for new features
 - **Documentation**: Update README for new functionality
 - **Configuration**: Use config.json for settings

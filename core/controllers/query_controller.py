@@ -3,8 +3,7 @@
 Handles query processing, async operations, and result display.
 Extracted from the monolithic workapp3.py for better maintainability.
 
-NOTE: This module touches asyncio.new_event_loop (deprecated pattern) and will require
-call-graph diff review according to refactoring constraints.
+Modernized async patterns using asyncio.run() and proper event loop handling.
 """
 
 import streamlit as st
@@ -240,16 +239,27 @@ class QueryController:
 
         # Process the query asynchronously
         try:
-            # DEPRECATED PATTERN: asyncio.new_event_loop() - will be modernized in future phases
-            # TODO: Replace with asyncio.TaskGroup in Phase 2 modernization
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            results = loop.run_until_complete(
-                self.process_query_async(
-                    query, doc_processor, llm_service, retrieval_system, debug_mode, progress_tracker
+            # Modern async pattern using asyncio.run()
+            try:
+                # Try to get existing event loop
+                loop = asyncio.get_running_loop()
+                # If we're already in an async context, create a task
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(
+                        asyncio.run,
+                        self.process_query_async(
+                            query, doc_processor, llm_service, retrieval_system, debug_mode, progress_tracker
+                        )
+                    )
+                    results = future.result()
+            except RuntimeError:
+                # No event loop running, use asyncio.run() directly
+                results = asyncio.run(
+                    self.process_query_async(
+                        query, doc_processor, llm_service, retrieval_system, debug_mode, progress_tracker
+                    )
                 )
-            )
-            loop.close()
 
             # Check for errors
             if "error" in results:
