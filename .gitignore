@@ -11,6 +11,9 @@ venv/
 # VSCode settings
 .vscode/
 
+#gitignore
+.gitignore
+
 # Pytest cache
 .pytest_cache/
 
