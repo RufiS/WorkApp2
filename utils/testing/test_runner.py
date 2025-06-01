@@ -71,8 +71,7 @@ class TestRunner:
     def run_custom_comparison(
         self, 
         query: str, 
-        configuration_names: List[str]
-    ) -> ComparisonResults:
+        configuration_names: List[str]) -> ComparisonResults:
         """Run comparison with custom selection of configurations.
         
         Args:

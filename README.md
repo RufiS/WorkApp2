@@ -1,10 +1,56 @@
 # WorkApp2 Document QA System
 
-An AI-powered document question-answering system that allows users to upload documents and ask questions about their content using advanced search and LLM technology.
+**🎯 Vision**: A flexible, enterprise-grade AI document Q&A system that works with local LLMs, cloud APIs, or hybrid deployments to deliver instant, accurate answers from organizational knowledge.
 
 **Status**: Core System Operational | Ready for Enhancement Phase  
 **Version**: 0.4.0  
 **Last Updated**: June 1, 2025  
+
+---
+
+## 🚀 **Project Goals & Investment Opportunity**
+
+### **What We're Building**
+WorkApp2 transforms how Karls Technology accesses its document knowledge. Upload any company document, ask questions in natural language, get instant AI-powered answers tailored to our operational needs. 
+
+### **🎯 Strategic Vision: Maximum Deployment Flexibility**
+- **🏠 Local-Only Deployment**: Run entirely on company servers (only hardware cost, no per-use fees)
+- **☁️ Cloud API Options**: Use cloud services when preferred (pay-per-use model)
+- **🔄 Hybrid Configurations**: Mix deployment models to optimize cost/performance/security
+- **🎛️ Company Choice**: Karls Technology chooses deployment based on our capabilities and preferences
+- **🧪 Validation Strategy**: Currently testing with OpenAI for reliable baseline performance
+
+### **💰 Business Value**
+- **Instant ROI**: Reduce document search time from minutes to seconds
+- **Cost Efficiency**: Eliminate repeated expert consultations for procedural questions
+- **Competitive Advantage**: Deploy with security model that fits your organization
+- **Scalable Solution**: Works for 10 documents or 10,000 documents
+
+### **📈 Investment Opportunity**
+**Current Achievement**: 91% improvement in document processing efficiency, 28.6% performance gains
+
+**Funding Goals**: 
+- Domain-specific optimization for specialized industries
+- Local LLM integration and testing
+- Enterprise deployment and scaling capabilities
+
+**Timeline**: 2-4 months to market-ready deployment
+
+---
+
+## 📊 **Current Status & Progress**
+
+### ✅ **Core System Complete**
+- Professional web interface (Streamlit)
+- Enhanced document processing (PDF, TXT, DOCX)
+- Advanced search (vector + hybrid + reranking)
+- Comprehensive testing framework
+- Production-ready architecture
+
+### 🎯 **Next Investment Phase**
+- **Phase 1**: Domain-specific model optimization (2-4 weeks)
+- **Phase 2**: Local LLM integration and testing (1-2 months) 
+- **Phase 3**: Enterprise deployment capabilities
 
 ---
 
@@ -16,8 +62,7 @@ An AI-powered document question-answering system that allows users to upload doc
 - [Usage](#usage)
 - [Testing](#testing)
 - [Architecture](#architecture)
-- [Executive Summary](#executive-summary)
-- [Development Status](#development-status)
+- [Development Roadmap](#development-roadmap)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -260,10 +305,10 @@ WorkApp2 is architected for maximum deployment flexibility:
 ## 📊 Executive Summary
 
 ### Project Overview
-WorkApp2 enables organizations to upload documents and ask questions about their content, receiving AI-powered answers through advanced search and LLM technology.
+WorkApp2 enables Karls Technology to upload company documents and ask questions about their content, receiving AI-powered answers through advanced search and LLM technology.
 
-**Target Users**: Any organization needing intelligent document search and Q&A capabilities  
-**Primary Use Case**: Upload documents → Ask questions → Get comprehensive answers  
+**Target Users**: Karls Technology staff and personnel  
+**Primary Use Case**: Upload company documents → Ask operational questions → Get comprehensive answers  
 
 ### Current Status: Strong Foundation Ready for Growth
 
@@ -374,7 +419,26 @@ streamlit run workapp3.py
 
 ## 📄 License
 
-[License information to be added]
+**Proprietary License - Karls Technology Exclusive Use**
+
+Copyright (c) 2025 Karls Technology. All rights reserved.
+
+This software and associated documentation files (the "Software") are the exclusive property of Karls Technology. 
+
+**RESTRICTED USE**: This Software is licensed solely for internal use by Karls Technology and its authorized personnel. 
+
+**PROHIBITED ACTIVITIES**:
+- Distribution, sublicensing, or transfer to any third party
+- Use by any individual or organization other than Karls Technology
+- Commercial exploitation or resale
+- Reverse engineering, decompilation, or disassembly
+- Modification or creation of derivative works without explicit written permission
+
+**CONFIDENTIALITY**: This Software contains proprietary and confidential information of Karls Technology and must be treated as confidential.
+
+Any unauthorized use, distribution, or disclosure of this Software is strictly prohibited and may result in legal action.
+
+For questions regarding licensing or authorized use, contact Karls Technology management.
 
 ---
 
