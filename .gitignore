@@ -1,34 +1,35 @@
-# Byte-compiled / optimized / DLL files
+# Python bytecode
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+*.pyo
 
 # Virtual environments
 .venv/
-env/
 venv/
+env/
 
-# VSCode settings
+# Editor configs
 .vscode/
+.idea/
 
-#gitignore
-.gitignore
-
-# Pytest cache
+# Testing caches
 .pytest_cache/
-
-# MyPy cache
 .mypy_cache/
 
-# Logs and backups
+# Logs and temp
 *.log
 *.tmp
-Old_BackUp_Versions/
-integration_backup/
-logs/
-
-# IDEs and editors
-.idea/
 
 # MacOS
 .DS_Store
+
+# Project-specific (optional—exclude if unnecessary)
+*.npy
+*.code-workspace
+*.sample
+*.TAG
+*.cfg
+
+# CSV/PDF (optional—review necessity)
+*.csv
+*.pdf
