@@ -426,26 +426,30 @@ streamlit run workapp3.py
 
 ## 📄 License
 
-**Proprietary License - Karls Technology Exclusive Use**
+**Proprietary License - RufiSoft Exclusive Property**
 
-Copyright (c) 2025 Karls Technology. All rights reserved.
+Copyright (c) 2025 RufiSoft (Peter Jones). All rights reserved.
 
-This software and associated documentation files (the "Software") are the exclusive property of Karls Technology. 
+This software and associated documentation files (the "Software") are the exclusive property of RufiSoft.
 
-**RESTRICTED USE**: This Software is licensed solely for internal use by Karls Technology and its authorized personnel. 
+**AUTHORIZED USE**: This Software is licensed for use by Karls Technology until determined otherwise by RufiSoft.
+
+**EXCLUSIVE PURCHASE OPTION**: Karls Technology has the exclusive right to negotiate purchase of full ownership rights to this Software. No other entity may acquire ownership rights without prior written consent from Karls Technology.
 
 **PROHIBITED ACTIVITIES**:
-- Distribution, sublicensing, or transfer to any third party
-- Use by any individual or organization other than Karls Technology
-- Commercial exploitation or resale
+- Distribution, sublicensing, or transfer to any third party without explicit permission from RufiSoft
+- Use by any individual or organization other than Karls Technology without authorization from RufiSoft
+- Commercial exploitation or resale without explicit permission from RufiSoft
 - Reverse engineering, decompilation, or disassembly
-- Modification or creation of derivative works without explicit written permission
+- Modification or creation of derivative works without explicit written permission from RufiSoft
 
-**CONFIDENTIALITY**: This Software contains proprietary and confidential information of Karls Technology and must be treated as confidential.
+**CONFIDENTIALITY**: This Software contains proprietary and confidential information of RufiSoft and must be treated as confidential.
+
+**OWNERSHIP AUTHORITY**: RufiSoft retains all rights to determine usage terms, modifications, and authorization changes.
 
 Any unauthorized use, distribution, or disclosure of this Software is strictly prohibited and may result in legal action.
 
-For questions regarding licensing or authorized use, contact Karls Technology management.
+For questions regarding licensing or authorized use, contact Peter Jones at RufiSoft.
 
 ---
 
