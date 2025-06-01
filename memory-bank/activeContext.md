@@ -12,11 +12,51 @@
 ✅ **Sidebar Synchronization Fixed**: Configuration sidebar now auto-syncs with loaded config
 ✅ **User Interface Enhanced**: Added config status display, manual sync button, and optimal settings recommendations
 
-**Previous Enhancement**: Enhanced chunking structure implemented (209 vs 2,477 chunks) with parameter sweep showing 28.6% vs 0.0% improvement. **VALIDATION STILL CRITICAL**: This may be a red herring - improvement could be measuring better arrangement of still-irrelevant content if embedding model lacks dispatch domain understanding.
+**Previous Enhancement**: Enhanced chunking structure implemented (209 vs 2,477 chunks). **LATEST EVIDENCE (5/31/2025 22:47)**: Parameter sweep shows 28.57% coverage but 0% task completion across ALL 20 configurations. Only 2 out of 7 expected chunks retrieved. **VALIDATION COMPLETED**: Semantic understanding confirmed POOR - infrastructure improved but users cannot complete tasks.
 
-## ⚠️ POTENTIAL IMPROVEMENT: Enhanced Chunking Deployed - Critical Validation Required (6/1/2025)
+## 🚨 VALIDATION METHODOLOGY CORRECTION: General Q&A Required (6/1/2025 05:12)
 
-### **⚠️ Structural Improvement Achieved (Semantic Validation Pending)**:
+### **📋 PROPER VALIDATION APPROACH ESTABLISHED**:
+
+**✅ Validation Standards Corrected**: 
+- **General Q&A Methodology**: All validation must use general questions requiring multi-section synthesis
+- **KTI Guide-Based Questions**: Questions derived from actual KTI Dispatch Guide content but testing comprehensive understanding
+- **Real-World Scenarios**: Test whether system can serve as complete dispatcher knowledge base
+- **Multi-Chunk Synthesis**: Questions must require combining information from 3-5+ document sections
+
+**❌ Previous Validation Errors**:
+- **First Error**: Generic questions not grounded in actual document content ("What should Field Engineer do for emergency calls?")
+- **Second Error**: Overly specific single-chunk questions ("What is exact SMS format?")
+- **Correct Approach**: General questions based on KTI Guide requiring comprehensive document synthesis
+
+**🎯 Example Proper Questions**:
+- "A client is calling about computer repair pricing and wants to know what we can fix"
+- "How do I handle a client who wants to cancel their appointment today?"
+- "What's the complete process when a Field Engineer calls out sick?"
+
+**📊 AUTHENTIC GENERAL Q&A VALIDATION RESULTS (6/1/2025 05:25)**:
+
+**✅ Infrastructure Status: WORKING** 
+- Document processing: 210 chunks created in 1.51s
+- Search index: 210 chunks indexed in 1.43s  
+- Retrieval system: All queries retrieved 15 chunks successfully
+- Configuration: optimal settings applied (threshold 0.35, top_k 15, enhanced_mode true)
+
+**🚨 Q&A Capability: POOR**
+- **Question 1** (Pricing/Services): 2/5 topics covered (40%) - PARTIAL
+- **Question 2** (Cancellation): 2/4 topics covered (50%) - PARTIAL
+- **Question 3** (FE Callout): 1/4 topics covered (25%) - POOR
+- **Question 4** (Revisit Policy): 1/4 topics covered (25%) - POOR
+- **Question 5** (Online Requests): 0/4 topics covered (0%) - POOR
+- **Overall Assessment**: 0/5 questions achieved GOOD coverage (≥60%)
+
+**🔍 Critical Validation Findings**:
+- **Infrastructure Excellent**: All technical components working perfectly
+- **Semantic Understanding Poor**: Retrieved chunks don't contain expected dispatcher topics
+- **Domain Gap Confirmed**: Embedding model struggles with dispatch terminology synthesis
+- **Red Herring Validated**: Enhanced chunking improved structure but not functional capability
+
+### **⚠️ Structural Improvement Achieved (Semantic Validation Completed - POOR)**:
 - **Enhanced File Processor**: Complete 1000-char chunks + 200-char overlap implementation
 - **Micro-Chunking Eliminated**: 2,477 fragments replaced with 209 coherent chunks
 - **Measured Improvement**: Parameter sweep shows 28.6% vs 0.0% coverage
@@ -42,7 +82,7 @@
 ### **✅ Enhanced Processing Architecture (Successfully Implemented)**:
 ```
 core/                           # Core business logic (enhanced chunking integrated)
-├── document_ingestion/         # Enhanced document processing (FUNCTIONAL)
+├── document_ingestion/         # Enhanced document processing (STRUCTURALLY IMPROVED)
 │   ├── enhanced_file_processor.py  # 1000-char chunks + 200-char overlap
 │   ├── ingestion_manager.py    # Uses enhanced file processor
 │   └── [other processors]      # Enhanced chunking foundation
