@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Optional
 
 from utils.testing import TestRunner, TEST_CONFIGURATIONS
 from utils.testing.engine_comparison import ComparisonResults
+from utils.testing.answer_quality_analyzer import AnswerQualityAnalyzer, run_text_message_analysis
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +44,17 @@ class TestingController:
     
     def render_testing_section(self) -> None:
         """Render the systematic testing section in the UI."""
+        # Create tabs for different testing approaches
+        tab1, tab2 = st.tabs(["🔧 Engine Testing", "📋 Answer Quality Analysis"])
+        
+        with tab1:
+            self._render_engine_testing()
+        
+        with tab2:
+            self._render_answer_quality_analysis()
+    
+    def _render_engine_testing(self) -> None:
+        """Render the systematic engine testing section."""
         st.header("🔬 Systematic Engine Testing")
         st.markdown("""
         Test the same query across different retrieval engine configurations to identify optimal settings.
@@ -361,3 +373,380 @@ class TestingController:
                     file_name=f"rankings_{suite_name}_{int(time.time())}.csv",
                     mime="text/csv"
                 )
+    
+    def _render_answer_quality_analysis(self) -> None:
+        """Render the answer quality analysis section."""
+        st.header("📋 Answer Quality Analysis")
+        st.markdown("""
+        Analyze the complete question → retrieval → answer pipeline to identify gaps between current 
+        LLM outputs and ideal complete answers that help users accomplish their tasks.
+        """)
+        
+        # Validate environment first
+        validation_result = self._validate_testing_environment()
+        if not validation_result["valid"]:
+            self._render_validation_errors(validation_result)
+            return
+        
+        # Quick analysis for text message example
+        st.subheader("🚀 Quick Analysis: Text Message Query")
+        st.markdown("""
+        Run comprehensive analysis on the critical "text message" query to understand why users 
+        aren't getting complete, actionable answers.
+        """)
+        
+        col1, col2 = st.columns([1, 2])
+        
+        with col1:
+            if st.button(
+                "🔍 Analyze Text Message Query",
+                type="primary",
+                help="Run comprehensive analysis for 'How do I respond to a text message'"
+            ):
+                self._execute_answer_quality_analysis("text_message")
+        
+        with col2:
+            st.info("""
+            **Expected Content Areas:**
+            • RingCentral Texting (chunks 10-12)
+            • Text Response workflow (chunk 56) 
+            • Text Tickets handling (chunks 58-60)
+            """)
+        
+        # Custom query analysis
+        st.subheader("🎯 Custom Query Analysis")
+        
+        custom_query = st.text_area(
+            "Enter Query to Analyze",
+            value="How do I handle appointment cancellations?",
+            height=100,
+            help="Enter any dispatch-related question to analyze answer completeness"
+        )
+        
+        # Expected content specification
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            expected_chunks = st.text_input(
+                "Expected Chunk IDs (comma-separated)",
+                placeholder="e.g., 105, 106, 107",
+                help="Specific chunk numbers that should be included for complete answer"
+            )
+        
+        with col2:
+            expected_content = st.text_area(
+                "Expected Content Areas (one per line)",
+                placeholder="Same Day Cancellation\nCancellation Policy\nReschedule Process",
+                help="Content areas that should be covered for complete guidance"
+            )
+        
+        if st.button(
+            "🔬 Analyze Custom Query",
+            disabled=not custom_query.strip(),
+            help="Run comprehensive analysis on your custom query"
+        ):
+            # Parse expected inputs
+            chunk_list = []
+            if expected_chunks.strip():
+                try:
+                    chunk_list = [int(x.strip()) for x in expected_chunks.split(",") if x.strip()]
+                except ValueError:
+                    st.error("Invalid chunk IDs. Please enter comma-separated numbers.")
+                    return
+            
+            content_list = []
+            if expected_content.strip():
+                content_list = [line.strip() for line in expected_content.split("\n") if line.strip()]
+            
+            self._execute_custom_answer_analysis(
+                custom_query.strip(), 
+                chunk_list, 
+                content_list
+            )
+        
+        # Display results if available
+        if "answer_quality_results" in st.session_state:
+            self._render_answer_quality_results(st.session_state["answer_quality_results"])
+    
+    def _execute_answer_quality_analysis(self, analysis_type: str) -> None:
+        """Execute answer quality analysis."""
+        try:
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            status_text.text("🔄 Initializing answer quality analyzer...")
+            progress_bar.progress(20)
+            
+            # Get services
+            llm_service, _, retrieval_system = self.orchestrator.get_services()
+            
+            if analysis_type == "text_message":
+                status_text.text("🔄 Analyzing text message query...")
+                progress_bar.progress(50)
+                
+                results = run_text_message_analysis(retrieval_system, llm_service)
+            
+            else:
+                st.error(f"Unknown analysis type: {analysis_type}")
+                return
+            
+            progress_bar.progress(90)
+            status_text.text("🔄 Generating recommendations...")
+            
+            # Store results
+            st.session_state["answer_quality_results"] = {
+                "analysis": results,
+                "analysis_type": analysis_type
+            }
+            
+            progress_bar.progress(100)
+            status_text.text("✅ Analysis completed!")
+            
+            # Clear progress indicators and refresh
+            time.sleep(1)
+            progress_bar.empty()
+            status_text.empty()
+            st.rerun()
+            
+        except Exception as e:
+            self.logger.error(f"Error in answer quality analysis: {str(e)}")
+            st.error(f"❌ Analysis failed: {str(e)}")
+            progress_bar.empty()
+            status_text.empty()
+    
+    def _execute_custom_answer_analysis(
+        self, 
+        query: str, 
+        expected_chunks: List[int], 
+        expected_content: List[str]
+    ) -> None:
+        """Execute custom answer quality analysis."""
+        try:
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            status_text.text("🔄 Initializing analyzer...")
+            progress_bar.progress(20)
+            
+            # Get services
+            llm_service, _, retrieval_system = self.orchestrator.get_services()
+            
+            status_text.text(f"🔄 Analyzing query: {query[:50]}...")
+            progress_bar.progress(50)
+            
+            # Run analysis
+            analyzer = AnswerQualityAnalyzer(retrieval_system, llm_service)
+            results = analyzer.analyze_answer_completeness(
+                query=query,
+                expected_chunks=expected_chunks,
+                expected_content_areas=expected_content
+            )
+            
+            progress_bar.progress(90)
+            status_text.text("🔄 Generating recommendations...")
+            
+            # Store results
+            st.session_state["answer_quality_results"] = {
+                "analysis": results,
+                "analysis_type": "custom"
+            }
+            
+            progress_bar.progress(100)
+            status_text.text("✅ Analysis completed!")
+            
+            # Clear progress indicators and refresh
+            time.sleep(1)
+            progress_bar.empty()
+            status_text.empty()
+            st.rerun()
+            
+        except Exception as e:
+            self.logger.error(f"Error in custom answer analysis: {str(e)}")
+            st.error(f"❌ Analysis failed: {str(e)}")
+            progress_bar.empty()
+            status_text.empty()
+    
+    def _render_answer_quality_results(self, results_data: Dict[str, Any]) -> None:
+        """Render answer quality analysis results."""
+        analysis = results_data["analysis"]
+        analysis_type = results_data["analysis_type"]
+        
+        st.header("📊 Answer Quality Analysis Results")
+        
+        # Query and metadata
+        st.subheader("📝 Query Analysis")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown(f"**Query:** {analysis['query']}")
+            st.markdown(f"**Analysis Type:** {analysis_type.title()}")
+        
+        with col2:
+            st.markdown(f"**Timestamp:** {analysis['timestamp'][:19]}")
+            if analysis.get('expected_chunks'):
+                st.markdown(f"**Expected Chunks:** {analysis['expected_chunks']}")
+        
+        # User Impact Assessment (Most Important)
+        st.subheader("👤 User Impact Assessment")
+        
+        if "user_impact" in analysis:
+            user_impact = analysis["user_impact"]
+            
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                completion_status = "✅" if user_impact.get("can_complete_task", False) else "❌"
+                st.metric(
+                    "Can Complete Task",
+                    completion_status,
+                    f"{user_impact.get('completion_confidence', 0):.1%} confidence"
+                )
+            
+            with col2:
+                frustration_risk = user_impact.get("user_frustration_risk", "unknown")
+                risk_color = {"low": "🟢", "medium": "🟡", "high": "🔴"}.get(frustration_risk, "⚪")
+                st.metric(
+                    "Frustration Risk",
+                    f"{risk_color} {frustration_risk.title()}"
+                )
+            
+            with col3:
+                success_prob = user_impact.get("task_success_probability", 0)
+                st.metric(
+                    "Success Probability",
+                    f"{success_prob:.1%}"
+                )
+            
+            # Required follow-up actions
+            if user_impact.get("required_followup"):
+                st.markdown("**Required Follow-up Actions:**")
+                for action in user_impact["required_followup"]:
+                    st.markdown(f"• {action}")
+        
+        # Gap Analysis
+        st.subheader("🔍 Content Gap Analysis")
+        
+        if "gap_analysis" in analysis:
+            gap_analysis = analysis["gap_analysis"]
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                coverage = gap_analysis.get("coverage_percentage", 0)
+                st.metric(
+                    "Content Coverage",
+                    f"{coverage:.1f}%",
+                    delta=f"{coverage - 100:.1f}%" if coverage < 100 else "Complete"
+                )
+                
+                if gap_analysis.get("missing_chunks"):
+                    st.markdown("**Missing Chunks:**")
+                    st.code(str(gap_analysis["missing_chunks"]))
+            
+            with col2:
+                if gap_analysis.get("missing_content_areas"):
+                    st.markdown("**Missing Content Areas:**")
+                    for area in gap_analysis["missing_content_areas"]:
+                        st.markdown(f"• {area}")
+                
+                if gap_analysis.get("critical_gaps"):
+                    st.markdown("**Critical Gaps:**")
+                    for gap in gap_analysis["critical_gaps"]:
+                        st.error(gap)
+        
+        # Current Answer Analysis
+        st.subheader("🤖 Current Answer Analysis")
+        
+        if "answer_analysis" in analysis and "answer" in analysis["answer_analysis"]:
+            answer_analysis = analysis["answer_analysis"]
+            answer = answer_analysis["answer"]
+            
+            # Show current answer
+            st.markdown("**Current LLM Answer:**")
+            st.text_area(
+                "Current Answer",
+                answer,
+                height=200,
+                disabled=True,
+                label_visibility="collapsed"
+            )
+            
+            # Answer quality metrics
+            col1, col2, col3 = st.columns(3)
+            
+            if "completeness_analysis" in answer_analysis:
+                completeness = answer_analysis["completeness_analysis"]
+                with col1:
+                    st.metric(
+                        "Completeness Score",
+                        f"{completeness.get('completeness_score', 0):.1%}"
+                    )
+            
+            if "actionability_analysis" in answer_analysis:
+                actionability = answer_analysis["actionability_analysis"]
+                with col2:
+                    st.metric(
+                        "Actionability Score",
+                        f"{actionability.get('actionability_score', 0):.1%}"
+                    )
+            
+            if "user_value_assessment" in answer_analysis:
+                user_value = answer_analysis["user_value_assessment"]
+                with col3:
+                    st.metric(
+                        "User Value Score",
+                        f"{user_value.get('user_value_score', 0):.1%}"
+                    )
+                
+                if "value_assessment" in user_value:
+                    st.markdown(f"**Assessment:** {user_value['value_assessment']}")
+        
+        # Retrieval Analysis
+        with st.expander("🔍 Retrieval Analysis Details", expanded=False):
+            if "retrieval_analysis" in analysis:
+                retrieval = analysis["retrieval_analysis"]
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.markdown(f"**Context Length:** {retrieval.get('context_length', 0):,} chars")
+                    st.markdown(f"**Chunk Count:** {retrieval.get('chunk_count', 0)}")
+                    st.markdown(f"**Retrieved Chunks:** {retrieval.get('retrieved_chunk_ids', [])}")
+                
+                with col2:
+                    if "total_chunks_available" in retrieval:
+                        st.markdown(f"**Total Chunks Available:** {retrieval['total_chunks_available']}")
+                
+                # Show chunk analysis if available
+                if "chunk_analysis" in retrieval and "score_distribution" in retrieval["chunk_analysis"]:
+                    st.markdown("**Similarity Score Distribution:**")
+                    dist = retrieval["chunk_analysis"]["score_distribution"]
+                    score_data = {
+                        "Min Score": f"{dist.get('min_score', 0):.3f}",
+                        "Max Score": f"{dist.get('max_score', 0):.3f}",
+                        "Mean Score": f"{dist.get('mean_score', 0):.3f}",
+                        "Scores > 0.8": dist.get('scores_above_0_8', 0),
+                        "Scores > 0.5": dist.get('scores_above_0_5', 0),
+                        "Scores > 0.3": dist.get('scores_above_0_3', 0)
+                    }
+                    st.json(score_data)
+        
+        # Recommendations
+        st.subheader("💡 Actionable Recommendations")
+        
+        if "recommendations" in analysis and analysis["recommendations"]:
+            for i, recommendation in enumerate(analysis["recommendations"], 1):
+                st.markdown(f"{i}. {recommendation}")
+        else:
+            st.info("No specific recommendations generated.")
+        
+        # Export options
+        st.subheader("📥 Export Analysis")
+        
+        if st.button("📄 Download Analysis JSON"):
+            st.download_button(
+                label="Download Analysis",
+                data=str(analysis),
+                file_name=f"answer_quality_analysis_{analysis_type}_{int(time.time())}.json",
+                mime="application/json"
+            )

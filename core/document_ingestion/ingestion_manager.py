@@ -10,7 +10,7 @@ from utils.common.metrics_collector import metrics_collector
 from utils.error_handling.enhanced_decorators import with_advanced_retry, with_timing
 
 from .chunk_cache import ChunkCache
-from .file_processors import FileProcessor
+from .enhanced_file_processor import EnhancedFileProcessor
 from .chunk_optimizer import ChunkOptimizer
 from .metadata_handler import MetadataHandler
 from .deduplication_engine import DeduplicationEngine
@@ -38,7 +38,7 @@ class DocumentIngestion:
         
         # Initialize component modules
         self.cache = ChunkCache()
-        self.file_processor = FileProcessor(self.chunk_size, self.chunk_overlap)
+        self.file_processor = EnhancedFileProcessor(self.chunk_size, self.chunk_overlap)
         self.chunk_optimizer = ChunkOptimizer(min_chunk_size=50)
         self.metadata_handler = MetadataHandler()
         self.deduplication_engine = DeduplicationEngine(self.embedding_model)

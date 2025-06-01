@@ -8,12 +8,22 @@
 - **FAISS**: 1.7.3+ (Vector search infrastructure ready, parameters wrong)
 - **BM25**: via `rank_bm25` library (Lexical search implemented, not tuned)
 
-### **AI/ML Technologies (Poor Performance)**
-- **OpenAI API**: GPT-3.5 Turbo (infrastructure works, prompts are terrible)
-  - Embedding Model: `text-embedding-ada-002` (may be adequate, retrieval tuning needed)
+### **AI/ML Technologies (CRITICAL ISSUE IDENTIFIED 5/31/2025)**
+- **OpenAI API**: GPT-3.5 Turbo (bulletproof service discovery implemented)
+  - **LLM Service Discovery**: Multi-strategy detection ensures mission-critical functionality never fails
+  - **Service Auto-Detection**: 5 fallback strategies guarantee LLM access
+  - Embedding Model: `text-embedding-ada-002` (GPU accelerated but RETRIEVAL BROKEN)
   - Dual-model pipeline: extraction + formatting (concept good, implementation poor)
+- **GPU Acceleration**: RTX 3090 Ti operational for embedding calculations
+  - **CUDA Integration**: Seamless GPU acceleration for all 221 chunks
+  - **Performance**: ~37s analysis time (previously minutes)
+  - **🚨 CRITICAL**: Parameter sweep revealed 0.0% retrieval coverage - fundamental failure
+- **Search Technology Crisis**: 
+  - **Vector Search**: Produces irrelevant results despite GPU acceleration
+  - **BM25 Integration**: Completely broken - not matching "text message" with SMS content
+  - **Hybrid Search**: All configurations return identical wrong results
 - **LangChain**: Text splitting (basic functionality, parameters likely wrong)
-- **NumPy**: Vector operations (working)
+- **NumPy**: Vector operations (GPU accelerated via CUDA)
 
 ### **Document Processing (Basic Functionality)**
 - **PyPDF2/PyMuPDF**: PDF processing (works but chunking may be suboptimal)
@@ -78,13 +88,19 @@
 - User value: Technical excellence doesn't translate to user benefit
 ```
 
-## 🚧 Development Challenges (Critical)
+## 🚧 Development Challenges (SYSTEMIC FAILURE IDENTIFIED)
+
+### **🚨 CRITICAL: Complete Retrieval Breakdown (5/31/2025)**
+- **Parameter Sweep Results**: 0.0% coverage across ALL 24 configurations tested
+- **No Working Solutions**: 0 configurations achieved task completion
+- **Systemic Failure**: Best user success only 8.0% (should be 80%+)
+- **Root Cause Required**: Problem is NOT parameter tuning but fundamental search failure
 
 ### **❌ Core Algorithm Issues**
-- **Similarity Thresholds**: Current values don't filter appropriately
-- **Chunk Processing**: Size and overlap parameters likely suboptimal
-- **Embedding Quality**: Unclear if embeddings capture document semantics well
-- **Search Weighting**: Hybrid BM25+FAISS balance not optimized
+- **Target Chunks Unfindable**: Chunks 10-12, 56, 58-60 completely missing from results
+- **Similarity Scoring Broken**: Even ultra-low thresholds (0.35) return 0.0% coverage
+- **Embedding Failure**: Query "text message" not matching relevant content at all
+- **Search Integration Broken**: BM25+Vector hybrid producing identical irrelevant results
 
 ### **❌ Prompt Engineering (Major Gap)**
 - **Extraction Prompts**: Don't effectively pull relevant information

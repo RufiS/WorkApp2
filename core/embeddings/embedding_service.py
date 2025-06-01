@@ -11,6 +11,7 @@ from collections import deque
 
 import numpy as np
 from sentence_transformers import SentenceTransformer
+import torch
 
 from core.config import retrieval_config, performance_config
 from utils.error_handling.enhanced_decorators import with_timing
@@ -32,14 +33,18 @@ class EmbeddingService:
         """
         self.model_name = model_name or retrieval_config.embedding_model
         
-        # Initialize embedding model
-        self.model = SentenceTransformer(self.model_name)
+        # Detect and configure device (GPU/CPU)
+        self.device = self._get_device()
+        
+        # Initialize embedding model with proper device
+        logger.info(f"Initializing SentenceTransformer model '{self.model_name}' on device: {self.device}")
+        self.model = SentenceTransformer(self.model_name, device=self.device)
         self.embedding_dim = self.model.get_sentence_embedding_dimension()
         
         # Initialize metrics tracking
         self.embedding_times = deque(maxlen=100)  # Keep last 100 embedding times
         
-        logger.info(f"Embedding service initialized with model {self.model_name}, dimension: {self.embedding_dim}")
+        logger.info(f"Embedding service initialized with model {self.model_name}, dimension: {self.embedding_dim}, device: {self.device}")
 
     @with_timing(threshold=1.0)
     def embed_texts(
@@ -214,20 +219,66 @@ class EmbeddingService:
                 logger.error(f"More than 50% of items are invalid ({invalid_count}/{len(texts)})")
 
         return text_strings
+    
+    def _get_device(self) -> str:
+        """
+        Determine the best device to use for embeddings
+        
+        Returns:
+            Device string ('cuda', 'mps', or 'cpu')
+        """
+        try:
+            # Check if GPU usage is enabled in config
+            if not performance_config.use_gpu_for_faiss:
+                logger.info("GPU usage disabled in config, using CPU for embeddings")
+                return 'cpu'
+            
+            # Check for CUDA (NVIDIA GPU)
+            if torch.cuda.is_available():
+                gpu_count = torch.cuda.device_count()
+                gpu_name = torch.cuda.get_device_name(0) if gpu_count > 0 else "Unknown"
+                logger.info(f"CUDA GPU detected: {gpu_name} (devices: {gpu_count})")
+                return 'cuda'
+            
+            # Check for MPS (Apple Silicon GPU)
+            if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+                logger.info("Apple MPS GPU detected")
+                return 'mps'
+            
+            # Fallback to CPU
+            logger.info("No GPU detected, using CPU for embeddings")
+            return 'cpu'
+            
+        except Exception as e:
+            logger.warning(f"Error detecting GPU device: {str(e)}, falling back to CPU")
+            return 'cpu'
 
     def get_model_info(self) -> Dict[str, Any]:
         """Get information about the embedding model"""
-        return {
+        info = {
             "model_name": self.model_name,
             "embedding_dim": self.embedding_dim,
+            "device": self.device,
             "max_seq_length": getattr(self.model, "max_seq_length", None),
         }
+        
+        # Add GPU info if available
+        if self.device == 'cuda' and torch.cuda.is_available():
+            info.update({
+                "gpu_name": torch.cuda.get_device_name(0),
+                "gpu_memory_total": torch.cuda.get_device_properties(0).total_memory,
+                "gpu_memory_allocated": torch.cuda.memory_allocated(0),
+                "gpu_memory_cached": torch.cuda.memory_reserved(0)
+            })
+        
+        return info
 
     def get_metrics(self) -> Dict[str, Any]:
         """Get embedding service metrics"""
         metrics = {
             "model_name": self.model_name,
             "embedding_dim": self.embedding_dim,
+            "device": self.device,
             "total_embeddings": len(self.embedding_times),
         }
 
@@ -247,6 +298,17 @@ class EmbeddingService:
                 "max_embedding_time": 0.0,
                 "recent_embedding_time": 0.0,
             })
+        
+        # Add GPU metrics if using GPU
+        if self.device == 'cuda' and torch.cuda.is_available():
+            try:
+                metrics.update({
+                    "gpu_memory_allocated_mb": torch.cuda.memory_allocated(0) / (1024 * 1024),
+                    "gpu_memory_cached_mb": torch.cuda.memory_reserved(0) / (1024 * 1024),
+                    "gpu_utilization": "N/A"  # Would need additional library like nvidia-ml-py
+                })
+            except Exception as e:
+                logger.warning(f"Error getting GPU metrics: {str(e)}")
 
         return metrics
 

@@ -233,10 +233,63 @@ class StorageManager:
                 logger.error("Attempting to save empty texts list!")
                 raise ValueError("Cannot save empty texts list")
 
-            np.save(temp_path, np.array(texts, dtype=object))
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+            
+            # Extract text content from chunk dictionaries if needed
+            text_content = []
+            for item in texts:
+                if isinstance(item, dict) and 'text' in item:
+                    text_content.append(item['text'])
+                elif isinstance(item, str):
+                    text_content.append(item)
+                else:
+                    text_content.append(str(item))
+            
+            # Save with robust error handling
+            logger.debug(f"Saving {len(text_content)} texts to {temp_path}")
+            
+            # Try numpy save with explicit error checking
+            try:
+                text_array = np.array(text_content, dtype=object)
+                logger.debug(f"Created numpy array with shape: {text_array.shape}")
+                
+                # Use explicit file writing for better error handling
+                with open(temp_path, 'wb') as f:
+                    np.save(f, text_array)
+                
+                # Verify temp file was created and has content
+                if not os.path.exists(temp_path):
+                    raise IOError(f"Temp file was not created: {temp_path}")
+                
+                file_size = os.path.getsize(temp_path)
+                if file_size == 0:
+                    raise IOError(f"Temp file is empty: {temp_path}")
+                    
+                logger.debug(f"Successfully created temp file: {temp_path} ({file_size} bytes)")
+                
+            except Exception as numpy_error:
+                logger.error(f"Numpy save failed: {numpy_error}")
+                # Fallback: save as JSON if numpy fails
+                logger.info("Attempting JSON fallback for text storage")
+                import json
+                with open(temp_path.replace('.npy', '.json'), 'w', encoding='utf-8') as f:
+                    json.dump(text_content, f, ensure_ascii=False, indent=2)
+                # Update temp_path for the JSON file
+                temp_path = temp_path.replace('.npy', '.json')
+                final_path = final_path.replace('.npy', '.json')
+            
+            # Atomic move
             os.replace(temp_path, final_path)
             logger.debug(f"Texts saved to {final_path}")
-        except IOError as e:
+            
+        except Exception as e:
+            # Clean up temp file if it exists
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except:
+                    pass
             raise IOError(f"Failed to save texts file: {str(e)}") from e
 
     def _save_metadata_file(self, index: faiss.Index, temp_path: str, final_path: str) -> None:
