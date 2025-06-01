@@ -104,7 +104,7 @@ def _extract_from_markdown(content: str, schema: Dict[str, Any]) -> Tuple[bool, 
     """Strategy 2: Extract JSON from markdown code blocks"""
     # Look for ```json or ``` blocks
     json_blocks = re.findall(r"```(?:json)?\s*([\s\S]*?)\s*```", content)
-    
+
     for block in json_blocks:
         try:
             parsed_json = json.loads(block.strip())
@@ -112,7 +112,7 @@ def _extract_from_markdown(content: str, schema: Dict[str, Any]) -> Tuple[bool, 
             return True, parsed_json, None
         except (json.JSONDecodeError, jsonschema.exceptions.ValidationError):
             continue
-    
+
     return False, None, "No valid JSON found in markdown blocks"
 
 
@@ -124,10 +124,10 @@ def _extract_with_patterns(content: str, schema: Dict[str, Any]) -> Tuple[bool, 
         r'\{(?:[^{}]|\{[^{}]*\})*\}',  # JSON with one level of nesting
         r'\{(?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*\}',  # JSON with two levels of nesting
     ]
-    
+
     for pattern in json_patterns:
         matches = re.findall(pattern, content, re.DOTALL)
-        
+
         for match in matches:
             try:
                 parsed_json = json.loads(match.strip())
@@ -136,7 +136,7 @@ def _extract_with_patterns(content: str, schema: Dict[str, Any]) -> Tuple[bool, 
                     return True, parsed_json, None
             except (json.JSONDecodeError, jsonschema.exceptions.ValidationError):
                 continue
-    
+
     return False, None, "No valid JSON found with patterns"
 
 
@@ -145,7 +145,7 @@ def _repair_and_extract(content: str, schema: Dict[str, Any]) -> Tuple[bool, Opt
     # Find potential JSON in content
     json_pattern = r'\{[\s\S]*?\}'
     matches = re.findall(json_pattern, content)
-    
+
     for match in matches:
         repaired_json = _repair_json_string(match)
         try:
@@ -155,7 +155,7 @@ def _repair_and_extract(content: str, schema: Dict[str, Any]) -> Tuple[bool, Opt
                 return True, parsed_json, None
         except (json.JSONDecodeError, jsonschema.exceptions.ValidationError):
             continue
-    
+
     return False, None, "JSON repair failed"
 
 
@@ -163,24 +163,24 @@ def _repair_json_string(json_str: str) -> str:
     """Repair common JSON formatting issues"""
     # Remove extra text before and after JSON
     json_str = json_str.strip()
-    
+
     # Fix trailing commas
     json_str = re.sub(r',\s*}', '}', json_str)
     json_str = re.sub(r',\s*]', ']', json_str)
-    
+
     # Fix unescaped quotes in values (basic approach)
     # Look for patterns like "answer": "He said "hello""
     json_str = re.sub(r':\s*"([^"]*)"([^"]*)"([^"]*)"', r': "\1\\""\2\\""\3"', json_str)
-    
+
     # Fix confidence values without leading zero
     json_str = re.sub(r'"confidence":\s*\.(\d+)', r'"confidence": 0.\1', json_str)
-    
+
     # Fix missing quotes around field names
     json_str = re.sub(r'(\w+):', r'"\1":', json_str)
-    
+
     # Fix single quotes to double quotes
     json_str = json_str.replace("'", '"')
-    
+
     return json_str
 
 
@@ -193,7 +193,7 @@ def _extract_partial_json(content: str, schema: Dict[str, Any]) -> Tuple[bool, O
         r'answer:\s*"([^"]*)"',
         r'answer:\s*([^,}\n]+)',
     ]
-    
+
     for pattern in answer_patterns:
         match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
         if match:
@@ -202,13 +202,13 @@ def _extract_partial_json(content: str, schema: Dict[str, Any]) -> Tuple[bool, O
                 # Try to extract sources and confidence too
                 sources = _extract_sources_from_content(content)
                 confidence = _extract_confidence_from_content(content)
-                
+
                 partial_json = {
                     "answer": answer_text,
                     "sources": sources,
                     "confidence": confidence
                 }
-                
+
                 try:
                     jsonschema.validate(instance=partial_json, schema=schema)
                     return True, partial_json, None
@@ -220,7 +220,7 @@ def _extract_partial_json(content: str, schema: Dict[str, Any]) -> Tuple[bool, O
                         return True, minimal_json, None
                     except jsonschema.exceptions.ValidationError:
                         continue
-    
+
     return False, None, "Could not extract partial JSON"
 
 
@@ -231,7 +231,7 @@ def _extract_sources_from_content(content: str) -> List[str]:
         r"'sources'\s*:\s*\[(.*?)\]",
         r'sources:\s*\[(.*?)\]',
     ]
-    
+
     for pattern in sources_patterns:
         match = re.search(pattern, content, re.DOTALL | re.IGNORECASE)
         if match:
@@ -240,7 +240,7 @@ def _extract_sources_from_content(content: str) -> List[str]:
             source_items = re.findall(r'"([^"]*)"', sources_str)
             if source_items:
                 return source_items
-    
+
     return []
 
 
@@ -251,7 +251,7 @@ def _extract_confidence_from_content(content: str) -> float:
         r"'confidence'\s*:\s*([0-9]*\.?[0-9]+)",
         r'confidence:\s*([0-9]*\.?[0-9]+)',
     ]
-    
+
     for pattern in confidence_patterns:
         match = re.search(pattern, content, re.IGNORECASE)
         if match:
@@ -264,7 +264,7 @@ def _extract_confidence_from_content(content: str) -> float:
                     return confidence / 100  # Convert percentage
             except ValueError:
                 continue
-    
+
     return 0.8  # Default confidence
 
 
@@ -273,24 +273,24 @@ def _extract_fallback(content: str) -> Tuple[bool, Dict[str, Any], Optional[str]
     # If all else fails, treat the entire content as the answer
     # Clean up the content first
     cleaned_content = content.strip()
-    
+
     # Remove common JSON artifacts if present
     cleaned_content = re.sub(r'^[{"\'\s]*', '', cleaned_content)
     cleaned_content = re.sub(r'[}"\'\s]*$', '', cleaned_content)
-    
+
     # Remove JSON field names if present
     cleaned_content = re.sub(r'^(answer|response)\s*:\s*', '', cleaned_content, flags=re.IGNORECASE)
-    
+
     # If content is still empty or too short, provide a default message
     if not cleaned_content or len(cleaned_content.strip()) < 5:
         cleaned_content = "Unable to process the response. Please try rephrasing your question."
-    
+
     fallback_json = {
         "answer": cleaned_content,
         "sources": [],
         "confidence": 0.5  # Low confidence since this is fallback
     }
-    
+
     return True, fallback_json, None
 
 

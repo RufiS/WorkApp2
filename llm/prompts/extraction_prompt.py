@@ -37,7 +37,7 @@ def generate_extraction_prompt_v2(query: str, context: str) -> str:
     """
     query = sanitize_input(query)
     context = sanitize_input(context)
-    
+
     return textwrap.dedent(
         f"""
         CRITICAL: RESPOND WITH ONLY VALID JSON - NO OTHER TEXT BEFORE OR AFTER
@@ -93,7 +93,7 @@ def generate_extraction_prompt_legacy(query: str, context: str) -> str:
     """
     query = sanitize_input(query)
     context = sanitize_input(context)
-    
+
     return textwrap.dedent(
         f"""
         System: You are an expert Karls Technology dispatcher assistant.
@@ -102,9 +102,9 @@ def generate_extraction_prompt_legacy(query: str, context: str) -> str:
                 "Answer not found. Please contact a manager or fellow dispatcher."
 
         CONTEXT:
-        
+
         {context}
-        
+
         QUESTION:
         {query}
 
@@ -132,7 +132,7 @@ def generate_extraction_prompt_legacy(query: str, context: str) -> str:
             4. When multiple phone numbers appear in one Metro block, treat each separately—do **not** mix cities across different sub-records.
             5. If asked about a **city**, return the number from the sub-record whose city list contains that exact name (match full words only).
             6. If asked about the **Metro** itself, return **all** unique phone numbers found in its entire block.
-            
+
 
           - Terminology & Disambiguation:
             - Use ONLY the exact terminology, headings, and acronyms from CONTEXT.
@@ -172,7 +172,7 @@ def generate_extraction_prompt_simple(query: str, context: str) -> str:
     """
     query = sanitize_input(query)
     context = sanitize_input(context)
-    
+
     return textwrap.dedent(
         f"""
         RESPOND WITH ONLY JSON - NO OTHER TEXT

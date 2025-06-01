@@ -5,6 +5,6 @@ from llm.pipeline.validation import ANSWER_SCHEMA
 
 __all__ = [
     "AnswerPipeline",
-    "AnswerPipelineDebugger", 
+    "AnswerPipelineDebugger",
     "ANSWER_SCHEMA"
 ]

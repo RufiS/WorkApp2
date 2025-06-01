@@ -48,7 +48,7 @@ class BatchProcessor:
         for i, p in enumerate(prompts):
             # Import here to avoid circular imports
             from utils.config import model_config
-            
+
             model = p.get("model") or model_config.extraction_model
             max_tokens = p.get("max_tokens") or model_config.max_tokens
             temperature = (
@@ -107,8 +107,8 @@ class BatchProcessor:
         return results
 
     async def process_parallel_requests(
-        self, 
-        requests: List[Dict[str, Any]], 
+        self,
+        requests: List[Dict[str, Any]],
         max_concurrent: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
@@ -122,17 +122,17 @@ class BatchProcessor:
             List of response dictionaries
         """
         max_concurrent = max_concurrent or self.batch_size
-        
+
         # Create semaphore to limit concurrency
         semaphore = asyncio.Semaphore(max_concurrent)
-        
+
         async def process_single_request(request_data: Dict[str, Any]) -> Dict[str, Any]:
             async with semaphore:
                 return await self.llm_service.async_chat_completion(**request_data)
-        
+
         # Create tasks for all requests
         tasks = [process_single_request(req) for req in requests]
-        
+
         # Execute all tasks concurrently (with semaphore limiting)
         return await asyncio.gather(*tasks)
 

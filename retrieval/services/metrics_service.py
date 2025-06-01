@@ -15,35 +15,35 @@ logger = logging.getLogger(__name__)
 
 class MetricsService:
     """Service for aggregating and managing retrieval metrics."""
-    
+
     def __init__(self, document_processor, vector_engine, hybrid_engine, reranking_engine):
         """Initialize metrics service with engine references.
-        
+
         Args:
             document_processor: Document processor instance
             vector_engine: Vector search engine instance
-            hybrid_engine: Hybrid search engine instance 
+            hybrid_engine: Hybrid search engine instance
             reranking_engine: Reranking engine instance
         """
         self.document_processor = document_processor
         self.vector_engine = vector_engine
         self.hybrid_engine = hybrid_engine
         self.reranking_engine = reranking_engine
-    
+
     def get_metrics(self) -> Dict[str, Any]:
         """Get comprehensive metrics from all engines.
-        
+
         Returns:
             Dictionary with retrieval system metrics
         """
         # Get metrics from document processor
         processor_metrics = self.document_processor.get_metrics()
-        
+
         # Get metrics from all engines
         vector_metrics = self.vector_engine.get_metrics()
-        hybrid_metrics = self.hybrid_engine.get_metrics() 
+        hybrid_metrics = self.hybrid_engine.get_metrics()
         reranking_metrics = self.reranking_engine.get_metrics()
-        
+
         return {
             "processor": processor_metrics,
             "vector_engine": vector_metrics,
@@ -55,17 +55,17 @@ class MetricsService:
                 "current_method": self._get_current_method(),
             }
         }
-    
+
     def reset_metrics(self) -> None:
         """Reset metrics for all engines."""
         self.vector_engine.reset_metrics()
         self.hybrid_engine.reset_metrics()
         self.reranking_engine.reset_metrics()
         logger.info("All retrieval engine metrics reset")
-    
+
     def get_engine_info(self) -> Dict[str, Any]:
         """Get information about available engines and their status.
-        
+
         Returns:
             Dictionary with engine status information
         """
@@ -79,10 +79,10 @@ class MetricsService:
             },
             "current_method": self._get_current_method(),
         }
-    
+
     def _get_current_method(self) -> str:
         """Get the currently active search method based on configuration.
-        
+
         Returns:
             String describing the current search method
         """

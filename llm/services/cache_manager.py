@@ -189,7 +189,7 @@ class CacheManager:
             Dictionary with cache statistics
         """
         total_cache_accesses = self.cache_hits + self.cache_misses
-        
+
         return {
             "cache_hits": self.cache_hits,
             "cache_misses": self.cache_misses,
@@ -206,22 +206,22 @@ class CacheManager:
     def remove_expired_entries(self) -> int:
         """
         Remove all expired entries from cache
-        
+
         Returns:
             Number of entries removed
         """
         if not self.enable_cache:
             return 0
-            
+
         expired_keys = []
         for key, entry in self.response_cache.items():
             if entry.is_expired():
                 expired_keys.append(key)
-        
+
         for key in expired_keys:
             del self.response_cache[key]
-            
+
         if expired_keys:
             logger.info(f"Removed {len(expired_keys)} expired cache entries")
-            
+
         return len(expired_keys)

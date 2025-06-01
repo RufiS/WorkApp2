@@ -39,10 +39,10 @@ class IndexBuilder:
             Empty FAISS index
         """
         logger.info(f"Creating new empty FAISS index with dimension {self.embedding_dim}")
-        
+
         # Create basic flat index
         index = faiss.IndexFlatL2(self.embedding_dim)
-        
+
         logger.info(f"Created empty index with dimension {self.embedding_dim}")
         return index
 
@@ -128,15 +128,15 @@ class IndexBuilder:
         # Apply optimizations if enabled and dataset is large enough
         if performance_config.enable_faiss_optimization and num_embeddings > 1000:
             logger.info("Applying FAISS optimizations for large dataset")
-            
+
             # Use IVF index for faster search with large datasets
             # Rule of thumb: nlist = sqrt(num_embeddings), capped at 100
             nlist = min(int(np.sqrt(num_embeddings)), 100)
-            
+
             logger.info(f"Creating IVF index with {nlist} clusters")
             quantizer = faiss.IndexFlatL2(self.embedding_dim)
             index = faiss.IndexIVFFlat(quantizer, self.embedding_dim, nlist, faiss.METRIC_L2)
-            
+
             # Train the index with the embeddings
             logger.info("Training IVF index")
             index.train(embeddings)
@@ -228,7 +228,7 @@ class IndexBuilder:
                 index.nprobe = min(20, getattr(index, 'nlist', 100))
             else:
                 index.nprobe = min(10, getattr(index, 'nlist', 100))
-            
+
             logger.info(f"Optimized search parameters: nprobe={index.nprobe} for target_recall={target_recall}")
         else:
             logger.debug("Index does not support search parameter optimization")

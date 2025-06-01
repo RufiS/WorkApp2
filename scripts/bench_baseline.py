@@ -21,22 +21,22 @@ BASELINE_FILE = Path("scripts/performance_baseline.json")
 def record_baseline_metrics() -> Dict[str, Any]:
     """Record initial performance baseline on first run"""
     print("📝 Recording performance baseline...")
-    
+
     # Get current git commit for tracking
     try:
         git_commit = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], 
-            text=True, 
+            ["git", "rev-parse", "HEAD"],
+            text=True,
             stderr=subprocess.DEVNULL
         ).strip()
     except subprocess.CalledProcessError:
         git_commit = "unknown"
-    
+
     # TODO: Implement actual query performance measurement
     # For now, use placeholder values that will be replaced with real measurements
     baseline = {
         "p99_latency_ms": 500.0,  # placeholder - measure actual query latency
-        "peak_rss_mb": 256.0,     # placeholder - measure actual memory usage  
+        "peak_rss_mb": 256.0,     # placeholder - measure actual memory usage
         "timestamp": time.time(),
         "git_commit": git_commit,
         "version": "v0.legacy_monolith",
@@ -50,7 +50,7 @@ def record_baseline_metrics() -> Dict[str, Any]:
             "iterations": 10  # Number of test iterations
         }
     }
-    
+
     BASELINE_FILE.write_text(json.dumps(baseline, indent=2))
     print(f"📝 Recorded baseline metrics to {BASELINE_FILE}")
     print(f"   Latency: {baseline['p99_latency_ms']:.1f}ms")
@@ -62,7 +62,7 @@ def load_baseline() -> Dict[str, Any]:
     if not BASELINE_FILE.exists():
         print("📋 No baseline found, recording initial metrics...")
         return record_baseline_metrics()
-    
+
     try:
         baseline = json.loads(BASELINE_FILE.read_text())
         print(f"📋 Loaded baseline from {baseline.get('version', 'unknown')} "
@@ -75,7 +75,7 @@ def load_baseline() -> Dict[str, Any]:
 def measure_current_performance() -> Dict[str, Any]:
     """Measure current performance metrics"""
     print("📊 Measuring current performance...")
-    
+
     # TODO: Implement actual performance measurement
     # This should:
     # 1. Start the Streamlit app in test mode
@@ -83,18 +83,18 @@ def measure_current_performance() -> Dict[str, Any]:
     # 3. Run standardized queries
     # 4. Measure p99 latency and peak RSS
     # 5. Return actual measurements
-    
+
     # For now, return placeholder values
     # In real implementation, this would measure actual performance
     current = {
         "p99_latency_ms": 520.0,  # placeholder - would be actual measurement
         "peak_rss_mb": 260.0      # placeholder - would be actual measurement
     }
-    
+
     print(f"📊 Current performance:")
-    print(f"   Latency: {current['p99_latency_ms']:.1f}ms") 
+    print(f"   Latency: {current['p99_latency_ms']:.1f}ms")
     print(f"   Memory:  {current['peak_rss_mb']:.1f}MB")
-    
+
     return current
 
 def create_test_document() -> Path:
@@ -106,13 +106,13 @@ Machine learning is a subset of artificial intelligence that enables computers t
 
 Key concepts in machine learning include:
 - Supervised learning: Training with labeled data
-- Unsupervised learning: Finding patterns in unlabeled data  
+- Unsupervised learning: Finding patterns in unlabeled data
 - Neural networks: Computing systems inspired by biological neural networks
 - Deep learning: Neural networks with multiple layers
 
 Vector search is a method used in information retrieval that represents documents and queries as high-dimensional vectors. These vectors capture semantic meaning, allowing for more accurate similarity matching compared to traditional keyword-based search methods.
 """
-    
+
     test_file = Path(tempfile.gettempdir()) / "workapp_test_doc.txt"
     test_file.write_text(test_content.strip())
     return test_file
@@ -122,23 +122,23 @@ def main():
         description="Performance baseline tracking for WorkApp2 refactoring"
     )
     parser.add_argument(
-        "--fail-threshold", 
-        type=float, 
-        default=10.0, 
+        "--fail-threshold",
+        type=float,
+        default=10.0,
         help="Fail if regression exceeds this percentage (default: 10%%)"
     )
     parser.add_argument(
-        "--record-baseline", 
+        "--record-baseline",
         action="store_true",
         help="Record new baseline (use carefully - only for major changes)"
     )
     parser.add_argument(
         "--show-baseline",
-        action="store_true", 
+        action="store_true",
         help="Display current baseline metrics and exit"
     )
     args = parser.parse_args()
-    
+
     # Handle special commands
     if args.show_baseline:
         if BASELINE_FILE.exists():
@@ -152,39 +152,39 @@ def main():
         else:
             print("📋 No baseline file found")
         return
-    
+
     if args.record_baseline:
         record_baseline_metrics()
         print("✅ New baseline recorded")
         return
-    
+
     # Normal performance check
     baseline = load_baseline()
     current = measure_current_performance()
-    
+
     # Calculate regression percentages
-    latency_regression = ((current["p99_latency_ms"] - baseline["p99_latency_ms"]) 
+    latency_regression = ((current["p99_latency_ms"] - baseline["p99_latency_ms"])
                          / baseline["p99_latency_ms"] * 100)
-    memory_regression = ((current["peak_rss_mb"] - baseline["peak_rss_mb"]) 
+    memory_regression = ((current["peak_rss_mb"] - baseline["peak_rss_mb"])
                         / baseline["peak_rss_mb"] * 100)
-    
+
     print(f"\n📊 Performance comparison vs baseline:")
     print(f"   Latency: {current['p99_latency_ms']:.1f}ms vs {baseline['p99_latency_ms']:.1f}ms "
           f"({latency_regression:+.1f}%)")
     print(f"   Memory:  {current['peak_rss_mb']:.1f}MB vs {baseline['peak_rss_mb']:.1f}MB "
           f"({memory_regression:+.1f}%)")
-    
+
     # CI exit code rules
     failed = False
-    
+
     if latency_regression > args.fail_threshold:
         print(f"❌ Latency regression {latency_regression:.1f}% exceeds threshold {args.fail_threshold}%")
         failed = True
-    
+
     if memory_regression > args.fail_threshold:
         print(f"❌ Memory regression {memory_regression:.1f}% exceeds threshold {args.fail_threshold}%")
         failed = True
-    
+
     if failed:
         print("\n💡 Performance regression detected. Consider:")
         print("   - Reviewing recent changes for performance impact")
@@ -192,9 +192,9 @@ def main():
         print("   - Optimizing critical code paths")
         print("   - If regression is intentional, record new baseline with --record-baseline")
         sys.exit(1)
-    
+
     print("✅ Performance within acceptable limits")
-    
+
     # Show improvement if any
     if latency_regression < -1 or memory_regression < -1:
         print("🎉 Performance improvements detected!")

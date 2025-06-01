@@ -9,7 +9,7 @@ from .test_runner import TestRunner
 
 __all__ = [
     "EngineComparisonService",
-    "TEST_CONFIGURATIONS", 
+    "TEST_CONFIGURATIONS",
     "ConfigurationMatrix",
     "TestRunner"
 ]

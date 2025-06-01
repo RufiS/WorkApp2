@@ -3,10 +3,10 @@
 # Styling constants
 WRAPPER_DIV_STYLE = "word-wrap: break-word; overflow-wrap: break-word; white-space: normal;"
 UNCERTAIN_SECTION_STYLE = """
-    background-color: #ffe0e0; 
-    padding: 10px; 
-    border-radius: 5px; 
-    border: 1px dashed #ff8080; 
+    background-color: #ffe0e0;
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px dashed #ff8080;
     margin-bottom: 10px;
 """
 TERM_DISTINCTION_STYLE = """

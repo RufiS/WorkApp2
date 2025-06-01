@@ -22,28 +22,28 @@ logger = logging.getLogger(__name__)
 
 class DocumentController:
     """Controller responsible for document upload and processing operations."""
-    
+
     def __init__(self, app_orchestrator: Optional[Any] = None) -> None:
         """Initialize the document controller.
-        
+
         Args:
             app_orchestrator: The main application orchestrator for service coordination
         """
         self.app_orchestrator = app_orchestrator
         self.logger = logger
-        
+
     def render_upload_section(self, ui_config: Any, dry_run_mode: bool = False) -> Optional[List[Any]]:
         """Render the document upload section of the UI.
-        
+
         Args:
             ui_config: UI configuration object
             dry_run_mode: Whether the application is in dry-run mode
-            
+
         Returns:
             List of uploaded files or None if no uploads
         """
         uploads = None
-        
+
         if ui_config.show_document_upload:
             st.subheader("Document Upload")
             st.write("Upload PDF, TXT, or DOCX files to build a searchable index.")
@@ -62,18 +62,18 @@ class DocumentController:
                     "Clear Index", help="Remove all documents from the index"
                 ):
                     self._handle_clear_index(dry_run_mode)
-                    
+
             with col3:
                 if st.button(
                     "Reset Tracking", help="Reset the file tracking without clearing the index"
                 ):
                     self._handle_reset_tracking()
-                    
+
         return uploads
-    
+
     def _handle_clear_index(self, dry_run_mode: bool) -> None:
         """Handle clearing the document index.
-        
+
         Args:
             dry_run_mode: Whether the application is in dry-run mode
         """
@@ -81,7 +81,7 @@ class DocumentController:
             if self.app_orchestrator:
                 doc_processor = self.app_orchestrator.get_document_processor()
                 doc_processor.clear_index()
-            
+
             # Also clear the processed files tracking
             if "processed_files" in st.session_state:
                 st.session_state.processed_files = set()
@@ -96,38 +96,38 @@ class DocumentController:
         except Exception as e:
             st.error(f"Error clearing index: {str(e)}")
             self.logger.error(f"Error clearing index: {str(e)}")
-    
+
     def _handle_reset_tracking(self) -> None:
         """Handle resetting the file tracking."""
         if "processed_files" in st.session_state:
             st.session_state.processed_files = set()
         st.success("File tracking reset. You can re-upload the same files.")
         self.logger.info("File tracking reset")
-    
+
     def process_uploaded_files(
-        self, 
-        uploads: List[Any], 
+        self,
+        uploads: List[Any],
         dry_run_mode: bool = False
     ) -> Tuple[bool, str]:
         """Process uploaded files and update the document index.
-        
+
         Args:
             uploads: List of uploaded file objects from Streamlit
             dry_run_mode: Whether the application is in dry-run mode
-            
+
         Returns:
             Tuple of (success, message)
         """
         if not uploads:
             return False, "No files uploaded"
-            
+
         try:
             # Get document processor
             if not self.app_orchestrator:
                 return False, "Application orchestrator not available"
-                
+
             doc_processor = self.app_orchestrator.get_document_processor()
-            
+
             # Initialize session state for tracking
             if "processed_files" not in st.session_state:
                 st.session_state.processed_files = set()
@@ -153,17 +153,17 @@ class DocumentController:
             for i, file in enumerate(uploads):
                 try:
                     progress_manager.update(i, f"Processing {file.name}...")
-                    
+
                     # Use existing DocumentProcessor.process_file() method
                     chunks = doc_processor.process_file(file)
-                    
+
                     if chunks:
                         all_chunks.extend(chunks)
                         completed_files.append(file)
                         self.logger.info(f"Successfully processed {file.name}: {len(chunks)} chunks")
                     else:
                         st.warning(f"No content extracted from {file.name}. File may be empty or unsupported.")
-                        
+
                 except Exception as e:
                     st.error(f"Error processing {file.name}: {str(e)}")
                     self.logger.error(f"Error processing {file.name}: {str(e)}", exc_info=True)
@@ -172,21 +172,21 @@ class DocumentController:
             if all_chunks:
                 try:
                     progress_manager.update(len(uploads), "Updating index...")
-                    
+
                     # Extract texts from chunks for index coordinator
                     texts = [
-                        chunk.get('text', chunk.get('content', '')) 
-                        for chunk in all_chunks 
+                        chunk.get('text', chunk.get('content', ''))
+                        for chunk in all_chunks
                         if chunk.get('text') or chunk.get('content')
                     ]
-                    
+
                     if texts:
                         # Use existing index coordinator for index updates
                         embeddings = doc_processor.batch_embed_chunks(texts)
                         success, message = index_coordinator.update_index(
                             texts, embeddings, append=True, dry_run=dry_run_mode
                         )
-                        
+
                         if success:
                             # CRITICAL FIX: Reload DocumentProcessor index after coordinator update
                             if not dry_run_mode:
@@ -195,10 +195,10 @@ class DocumentController:
                                     self.logger.info("DocumentProcessor reloaded updated index")
                                 except Exception as e:
                                     self.logger.warning(f"Failed to reload DocumentProcessor index: {str(e)}")
-                            
+
                             # Update processed files tracking
                             st.session_state.processed_files.update(current_file_names)
-                            
+
                             if dry_run_mode:
                                 success_msg = f"Processed {len(completed_files)} files successfully! (Dry-run mode - changes not saved)"
                                 st.success(success_msg)
@@ -207,7 +207,7 @@ class DocumentController:
                                 success_msg = f"Processed {len(completed_files)} files successfully!"
                                 st.success(success_msg)
                                 self.logger.info(f"Index updated successfully: {message}")
-                            
+
                             progress_manager.complete()
                             return True, success_msg
                         else:
@@ -221,7 +221,7 @@ class DocumentController:
                         st.error(error_msg)
                         progress_manager.complete()
                         return False, error_msg
-                        
+
                 except Exception as e:
                     error_msg = f"Error updating index: {str(e)}"
                     st.error(error_msg)
@@ -233,24 +233,24 @@ class DocumentController:
                 st.warning(warning_msg)
                 progress_manager.complete()
                 return False, warning_msg
-                
+
         except Exception as e:
             error_msg = f"Error processing uploaded files: {str(e)}"
             self.logger.error(error_msg, exc_info=True)
             return False, error_msg
-    
+
     def display_index_statistics(self, ui_config: Any) -> None:
         """Display index statistics and file information.
-        
+
         Args:
             ui_config: UI configuration object
         """
         try:
             if not self.app_orchestrator:
                 return
-                
+
             doc_processor = self.app_orchestrator.get_document_processor()
-            
+
             # Load existing index if available and not already loaded
             if doc_processor.has_index():
                 try:
@@ -300,26 +300,26 @@ class DocumentController:
                 except Exception as e:
                     st.warning(f"Failed to load existing index: {str(e)}")
                     self.logger.warning(f"Failed to load existing index: {str(e)}")
-                    
+
         except Exception as e:
             self.logger.error(f"Error displaying index statistics: {str(e)}")
-    
+
     def get_processed_files_count(self) -> int:
         """Get the number of processed files.
-        
+
         Returns:
             Number of processed files
         """
         if "processed_files" in st.session_state:
             return len(st.session_state.processed_files)
         return 0
-    
+
     def is_file_processed(self, filename: str) -> bool:
         """Check if a file has been processed.
-        
+
         Args:
             filename: Name of the file to check
-            
+
         Returns:
             True if the file has been processed, False otherwise
         """

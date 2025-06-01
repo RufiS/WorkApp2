@@ -63,9 +63,9 @@ def generate_formatting_prompt(raw_answer: str) -> str:
         - QUALITY CHECK: Verify that the final answer includes all required sections from the raw_answer.
 
         RAW_ANSWER:
-        
+
         {raw_answer}
-        
+
 
         FINAL ANSWER:
     """

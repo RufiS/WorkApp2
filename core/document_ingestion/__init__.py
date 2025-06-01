@@ -9,7 +9,7 @@ from .chunk_optimizer import ChunkOptimizer
 
 __all__ = [
     'DocumentIngestion',
-    'ChunkCacheEntry', 
+    'ChunkCacheEntry',
     'ChunkCache',
     'FileProcessor',
     'DeduplicationEngine',

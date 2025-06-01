@@ -33,24 +33,24 @@ class IndexManager:
             embedding_model_name: Name of the embedding model to use (defaults to config value)
         """
         self.embedding_model_name = embedding_model_name or retrieval_config.embedding_model
-        
+
         # Get embedding dimension from the service
         self.embedding_dim = embedding_service.embedding_dim
-        
+
         # Initialize state variables for backward compatibility
         self.index = None
         self.texts = []
         self.chunks = []  # Alias for self.texts for backward compatibility
-        
+
         # Initialize modular components
         self.index_builder = IndexBuilder(self.embedding_dim)
         self.storage_manager = StorageManager(self.embedding_model_name, self.embedding_dim)
         self.search_engine = SearchEngine(self.embedding_dim)
-        
+
         # GPU availability from manager
         self.gpu_available = gpu_manager.gpu_available
         self.index_on_gpu = False
-        
+
         logger.info(f"Index manager initialized with model {self.embedding_model_name}, delegating to modular components")
 
     def __del__(self):
@@ -88,11 +88,11 @@ class IndexManager:
         """
         # Delegate to index builder
         self.index = self.index_builder.create_empty_index()
-        
+
         # Initialize empty texts list
         self.texts = []
         self.chunks = []  # Alias for backward compatibility
-        
+
         logger.info(f"Created empty index with dimension {self.embedding_dim}")
 
     @with_timing(threshold=1.0)
@@ -197,7 +197,7 @@ class IndexManager:
 
         # Delegate disk clearing to storage manager
         self.storage_manager.clear_index(index_dir)
-        
+
         logger.info("Index cleared successfully")
 
     def save_index(self, index_dir: Optional[str] = None, dry_run: bool = False) -> None:
@@ -232,10 +232,10 @@ class IndexManager:
         """
         # Delegate to storage manager
         self.index, self.texts = self.storage_manager.load_index(index_dir)
-        
+
         # Update chunks alias for backward compatibility
         self.chunks = self.texts
-        
+
         # If we have texts and a new index with no vectors, rebuild the index
         if (
             self.texts
@@ -251,7 +251,7 @@ class IndexManager:
                 logger.info(f"Rebuilt index with {len(self.texts)} chunks")
             except Exception as e:
                 logger.error(f"Error rebuilding index: {str(e)}")
-        
+
         logger.info(f"Successfully loaded index with {len(self.texts)} chunks")
 
     def embed_query(self, query: str) -> np.ndarray:

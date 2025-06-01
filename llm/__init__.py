@@ -21,7 +21,7 @@ from llm.prompt_generator import PromptGenerator
 
 __all__ = [
     "LLMService", "CacheManager", "BatchProcessor",
-    "AnswerPipeline", "AnswerPipelineDebugger", 
+    "AnswerPipeline", "AnswerPipelineDebugger",
     "validate_json_output", "ANSWER_SCHEMA",
     "generate_extraction_prompt", "generate_formatting_prompt",
     "get_system_message", "sanitize_input",

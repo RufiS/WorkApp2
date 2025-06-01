@@ -150,7 +150,7 @@ class PromptGenerator:
             Enhanced prompt with explicit formatting instructions
         """
         base_prompt = self.generate_extraction_prompt(query, context)
-        
+
         if retry_count == 0:
             return base_prompt
         elif retry_count == 1:
@@ -211,7 +211,7 @@ class PromptGenerator:
         """
         words = context.split()
         sentences = re.split(r"[.!?]+", context)
-        
+
         return {
             "character_count": len(context),
             "word_count": len(words),

@@ -13,7 +13,7 @@ class TestConfiguration:
     description: str
     config_overrides: Dict[str, Any]
     expected_behavior: str
-    
+
     def __post_init__(self):
         """Validate configuration after initialization."""
         if not self.name or not self.config_overrides:
@@ -22,14 +22,14 @@ class TestConfiguration:
 
 class ConfigurationMatrix:
     """Manages the matrix of test configurations for engine comparison."""
-    
+
     def __init__(self):
         """Initialize the configuration matrix."""
         self._configurations = self._build_test_configurations()
-    
+
     def _build_test_configurations(self) -> List[TestConfiguration]:
         """Build the standard set of test configurations.
-        
+
         Returns:
             List of TestConfiguration objects
         """
@@ -44,7 +44,7 @@ class ConfigurationMatrix:
                 },
                 expected_behavior="Fast, basic similarity matching"
             ),
-            
+
             TestConfiguration(
                 name="hybrid_balanced",
                 description="Balanced hybrid search (50/50 vector/keyword)",
@@ -56,7 +56,7 @@ class ConfigurationMatrix:
                 },
                 expected_behavior="Balanced vector and keyword matching"
             ),
-            
+
             TestConfiguration(
                 name="hybrid_vector_heavy",
                 description="Vector-heavy hybrid search (90/10 vector/keyword)",
@@ -68,7 +68,7 @@ class ConfigurationMatrix:
                 },
                 expected_behavior="Mostly vector with keyword boost"
             ),
-            
+
             TestConfiguration(
                 name="hybrid_keyword_heavy",
                 description="Keyword-heavy hybrid search (30/70 vector/keyword)",
@@ -80,7 +80,7 @@ class ConfigurationMatrix:
                 },
                 expected_behavior="Keyword-focused with vector support"
             ),
-            
+
             TestConfiguration(
                 name="reranking_enabled",
                 description="Full reranking pipeline (highest quality)",
@@ -91,7 +91,7 @@ class ConfigurationMatrix:
                 },
                 expected_behavior="Highest quality, slower performance"
             ),
-            
+
             TestConfiguration(
                 name="low_threshold",
                 description="Permissive similarity threshold",
@@ -103,7 +103,7 @@ class ConfigurationMatrix:
                 },
                 expected_behavior="More results, potentially lower quality"
             ),
-            
+
             TestConfiguration(
                 name="high_threshold",
                 description="Strict similarity threshold",
@@ -115,7 +115,7 @@ class ConfigurationMatrix:
                 },
                 expected_behavior="Fewer, higher quality results"
             ),
-            
+
             TestConfiguration(
                 name="small_topk",
                 description="Small result set (focused)",
@@ -126,7 +126,7 @@ class ConfigurationMatrix:
                 },
                 expected_behavior="Fast, focused results"
             ),
-            
+
             TestConfiguration(
                 name="large_topk",
                 description="Large result set (comprehensive)",
@@ -137,7 +137,7 @@ class ConfigurationMatrix:
                 },
                 expected_behavior="Comprehensive results, slower"
             ),
-            
+
             TestConfiguration(
                 name="optimal_candidate",
                 description="Optimized configuration candidate",
@@ -151,24 +151,24 @@ class ConfigurationMatrix:
                 expected_behavior="Balanced performance and quality"
             )
         ]
-    
+
     def get_all_configurations(self) -> List[TestConfiguration]:
         """Get all test configurations.
-        
+
         Returns:
             List of all test configurations
         """
         return self._configurations.copy()
-    
+
     def get_configuration_by_name(self, name: str) -> TestConfiguration:
         """Get a specific configuration by name.
-        
+
         Args:
             name: Name of the configuration
-            
+
         Returns:
             TestConfiguration object
-            
+
         Raises:
             ValueError: If configuration not found
         """
@@ -176,27 +176,27 @@ class ConfigurationMatrix:
             if config.name == name:
                 return config
         raise ValueError(f"Configuration '{name}' not found")
-    
+
     def get_configuration_names(self) -> List[str]:
         """Get list of all configuration names.
-        
+
         Returns:
             List of configuration names
         """
         return [config.name for config in self._configurations]
-    
+
     def get_baseline_configurations(self) -> List[TestConfiguration]:
         """Get baseline configurations for comparison.
-        
+
         Returns:
             List of baseline configurations
         """
         baseline_names = ["vector_only", "hybrid_balanced", "reranking_enabled"]
         return [self.get_configuration_by_name(name) for name in baseline_names]
-    
+
     def get_parameter_sweep_configurations(self) -> List[TestConfiguration]:
         """Get configurations for parameter sweeping.
-        
+
         Returns:
             List of parameter sweep configurations
         """

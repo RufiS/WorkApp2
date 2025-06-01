@@ -34,10 +34,10 @@ class SearchEngine:
         logger.info(f"Search engine initialized with dimension {embedding_dim}")
 
     def search(
-        self, 
-        query: str, 
-        index: faiss.Index, 
-        texts: List[Any], 
+        self,
+        query: str,
+        index: faiss.Index,
+        texts: List[Any],
         top_k: int = 5
     ) -> List[Dict[str, Any]]:
         """
@@ -101,10 +101,10 @@ class SearchEngine:
             raise
 
     def _validate_search_inputs(
-        self, 
-        query: str, 
-        index: faiss.Index, 
-        texts: List[Any], 
+        self,
+        query: str,
+        index: faiss.Index,
+        texts: List[Any],
         top_k: int
     ) -> None:
         """Validate search input parameters"""
@@ -148,24 +148,24 @@ class SearchEngine:
         """
         try:
             query_embedding = embedding_service.embed_query(query)
-            
+
             # Validate query embedding dimensions
             if query_embedding.shape[1] != self.embedding_dim:
                 error_msg = f"Query embedding dimension mismatch: got {query_embedding.shape[1]}, expected {self.embedding_dim}"
                 logger.error(error_msg)
                 raise ValueError(error_msg)
-            
+
             return query_embedding
-            
+
         except Exception as e:
             logger.error(f"Error embedding query: {str(e)}")
             raise ValueError(f"Failed to embed query: {str(e)}")
 
     def _perform_search(
-        self, 
-        query_embedding: np.ndarray, 
-        index: faiss.Index, 
-        texts: List[Any], 
+        self,
+        query_embedding: np.ndarray,
+        index: faiss.Index,
+        texts: List[Any],
         top_k: int
     ) -> List[Dict[str, Any]]:
         """
@@ -206,9 +206,9 @@ class SearchEngine:
         return self._format_search_results(scores[0], indices[0], texts)
 
     def _format_search_results(
-        self, 
-        scores: np.ndarray, 
-        indices: np.ndarray, 
+        self,
+        scores: np.ndarray,
+        indices: np.ndarray,
         texts: List[Any]
     ) -> List[Dict[str, Any]]:
         """
@@ -223,7 +223,7 @@ class SearchEngine:
             List of formatted result dictionaries
         """
         results = []
-        
+
         for i, idx in enumerate(indices):
             if 0 <= idx < len(texts):  # Ensure index is valid
                 try:
@@ -232,16 +232,16 @@ class SearchEngine:
                         chunk = texts[idx].copy()
                     else:
                         chunk = {"text": texts[idx]}
-                    
+
                     # Add search score
                     chunk["score"] = float(scores[i])  # Convert numpy float to Python float
-                    
+
                     # Ensure metadata exists
                     if "metadata" not in chunk:
                         chunk["metadata"] = {"source": "unknown"}
-                    
+
                     results.append(chunk)
-                    
+
                 except (IndexError, KeyError, AttributeError) as e:
                     logger.warning(f"Error processing search result at index {idx}: {str(e)}")
                     # Create a minimal valid result

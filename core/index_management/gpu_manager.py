@@ -24,7 +24,7 @@ class GPUResourceManager:
         """Initialize GPU resource manager"""
         self.gpu_resources: Optional[faiss.StandardGpuResources] = None
         self.gpu_available = self._check_gpu_availability()
-        
+
         if self.gpu_available:
             logger.info("GPU is available for FAISS operations")
         else:

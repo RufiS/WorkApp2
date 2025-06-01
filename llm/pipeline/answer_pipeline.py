@@ -24,34 +24,34 @@ except ImportError:
 
 class AnswerPipelineDebugger:
     """Handles JSON debug logging for the answer pipeline"""
-    
+
     def __init__(self, debug_file_path: str = "logs/answer_pipeline_debug.json"):
         """
         Initialize the debugger
-        
+
         Args:
             debug_file_path: Path to the debug log file
         """
         self.debug_file_path = debug_file_path
         self.session_id = None
         self.debug_data = {}
-        
+
         # Ensure debug directory exists
         os.makedirs(os.path.dirname(debug_file_path), exist_ok=True)
-    
+
     def start_session(self, query: str, context: str) -> str:
         """
         Start a new debug session
-        
+
         Args:
             query: The user's query
             context: The retrieved context
-            
+
         Returns:
             Session ID
         """
         self.session_id = str(uuid.uuid4())[:8]
-        
+
         # Get current retrieval settings
         try:
             from core.config import retrieval_config, performance_config
@@ -59,7 +59,7 @@ class AnswerPipelineDebugger:
             vector_weight = getattr(retrieval_config, 'vector_weight', 0.5)
             enhanced_mode = getattr(retrieval_config, 'enhanced_mode', False)
             enable_reranking = getattr(performance_config, 'enable_reranking', False)
-            
+
             # Determine retrieval method
             if enable_reranking:
                 retrieval_method = "reranking"
@@ -70,7 +70,7 @@ class AnswerPipelineDebugger:
         except Exception as e:
             similarity_threshold = "unknown"
             retrieval_method = f"unknown (error: {str(e)})"
-        
+
         self.debug_data = {
             "timestamp": datetime.utcnow().isoformat() + "Z",
             "session_id": self.session_id,
@@ -87,14 +87,14 @@ class AnswerPipelineDebugger:
             "errors": [],
             "warnings": []
         }
-        
+
         logger.info(f"DEBUG SESSION STARTED: {self.session_id} for query: '{self._truncate_text(query, 50)}'")
         return self.session_id
-    
+
     def log_extraction_attempt(self, strategy_name: str, prompt: str, response: Dict[str, Any], success: bool):
         """
         Log an extraction attempt
-        
+
         Args:
             strategy_name: Name of the strategy attempted
             prompt: The prompt sent to the model
@@ -103,7 +103,7 @@ class AnswerPipelineDebugger:
         """
         if "extraction_attempts" not in self.debug_data["pipeline_trace"]:
             self.debug_data["pipeline_trace"]["extraction_attempts"] = []
-        
+
         attempt_data = {
             "strategy": strategy_name,
             "prompt_preview": self._truncate_text(prompt, 300),
@@ -117,16 +117,16 @@ class AnswerPipelineDebugger:
                 "has_error": "error" in response
             }
         }
-        
+
         if "error" in response:
             attempt_data["error"] = response["error"]
-        
+
         self.debug_data["pipeline_trace"]["extraction_attempts"].append(attempt_data)
-    
+
     def log_successful_extraction(self, extraction_response: Dict[str, Any], parsed_answer: str, parsing_success: bool, parsing_error: str = None):
         """
         Log successful extraction and JSON parsing
-        
+
         Args:
             extraction_response: The successful extraction response
             parsed_answer: The parsed answer text
@@ -147,11 +147,11 @@ class AnswerPipelineDebugger:
                 "parsing_error": parsing_error
             }
         }
-    
+
     def log_formatting_attempt(self, input_text: str, prompt: str, response: Dict[str, Any]):
         """
         Log formatting attempt
-        
+
         Args:
             input_text: The text sent for formatting
             prompt: The formatting prompt
@@ -170,14 +170,14 @@ class AnswerPipelineDebugger:
                 "has_error": "error" in response
             }
         }
-        
+
         if "error" in response:
             self.debug_data["pipeline_trace"]["formatting"]["error"] = response["error"]
-    
+
     def log_final_result(self, success: bool, final_content: str, errors: list = None):
         """
         Log the final pipeline result
-        
+
         Args:
             success: Whether the pipeline succeeded
             final_content: The final content returned
@@ -188,25 +188,25 @@ class AnswerPipelineDebugger:
             "content": self._truncate_text(final_content, 500),
             "content_length": len(final_content)
         }
-        
+
         if errors:
             self.debug_data["errors"].extend(errors)
-        
+
         # Detect common issues
         if "The draft is already formatted correctly" in final_content:
             self.debug_data["warnings"].append("Formatting model thinks input is already a formatted draft - possible prompt confusion")
-        
+
         if "No changes are needed" in final_content:
             self.debug_data["warnings"].append("Formatting model returned 'no changes needed' - likely receiving wrong input type")
-    
+
     def add_error(self, error_msg: str):
         """Add an error to the debug log"""
         self.debug_data["errors"].append(error_msg)
-    
+
     def add_warning(self, warning_msg: str):
         """Add a warning to the debug log"""
         self.debug_data["warnings"].append(warning_msg)
-    
+
     def save_debug_log(self):
         """Save the debug log to file"""
         try:
@@ -221,21 +221,21 @@ class AnswerPipelineDebugger:
                                 existing_entries.append(json.loads(line))
                 except Exception as e:
                     logger.warning(f"Could not read existing debug file: {str(e)}")
-            
+
             # Keep only the last 49 entries (we'll add 1 more)
             if len(existing_entries) >= 50:
                 existing_entries = existing_entries[-49:]
-            
+
             # Add our new entry
             existing_entries.append(self.debug_data)
-            
+
             # Write all entries back
             with open(self.debug_file_path, 'w') as f:
                 for entry in existing_entries:
                     f.write(json.dumps(entry, indent=None, separators=(',', ':')) + '\n')
-            
+
             logger.info(f"DEBUG SESSION SAVED: {self.session_id} to {self.debug_file_path}")
-            
+
         except Exception as e:
             logger.error(f"Failed to save debug log: {str(e)}")
             # Fallback: save to a backup location
@@ -246,15 +246,15 @@ class AnswerPipelineDebugger:
                 logger.info(f"Debug data saved to backup: {backup_path}")
             except Exception as backup_error:
                 logger.error(f"Failed to save debug backup: {str(backup_error)}")
-    
+
     def _truncate_text(self, text: str, max_length: int) -> str:
         """
         Truncate text for debug output
-        
+
         Args:
             text: Text to truncate
             max_length: Maximum length
-            
+
         Returns:
             Truncated text with ellipsis if needed
         """
@@ -293,7 +293,7 @@ class AnswerPipeline:
         """
         # Start debug session
         session_id = self.debugger.start_session(query, context)
-        
+
         try:
             # Check for empty context
             if not context or context.strip() == "":
@@ -302,7 +302,7 @@ class AnswerPipeline:
                 self.debugger.add_error(error_msg)
                 self.debugger.log_final_result(False, "Error: Empty context provided", [error_msg])
                 self.debugger.save_debug_log()
-                
+
                 # Log to central error log
                 try:
                     from core.config import app_config
@@ -340,7 +340,7 @@ class AnswerPipeline:
 
             # Enhanced multi-strategy extraction with 5 different approaches
             extraction_response = await self._attempt_multi_strategy_extraction(query, context)
-            
+
             # If extraction completely failed, return error
             if "error" in extraction_response and "content" not in extraction_response:
                 error_msg = f"All extraction strategies failed: {extraction_response.get('error', 'Unknown error')}"
@@ -365,10 +365,10 @@ class AnswerPipeline:
                 logger.warning(f"Failed to parse JSON from extraction response: {str(e)}, using raw content")
                 answer_text = extraction_response["content"]
                 self.debugger.add_warning(f"JSON parsing failed: {str(e)}")
-            
+
             # Log extraction results
             self.debugger.log_successful_extraction(extraction_response, answer_text, parsing_success, parsing_error)
-            
+
             # Generate formatting prompt with the extracted answer text
             formatting_prompt = self.prompt_generator.generate_formatting_prompt(answer_text)
 
@@ -378,7 +378,7 @@ class AnswerPipeline:
                 model=model_config.formatting_model,
                 max_tokens=model_config.max_tokens,
             )
-            
+
             # Log formatting attempt
             self.debugger.log_formatting_attempt(answer_text, formatting_prompt, formatting_response)
 
@@ -398,11 +398,11 @@ class AnswerPipeline:
                     model=model_config.formatting_model,
                     max_tokens=model_config.max_tokens,
                 )
-                
+
                 # Log retry attempt
                 self.debugger.log_formatting_attempt(
-                    extraction_response["content"], 
-                    simple_formatting_prompt, 
+                    extraction_response["content"],
+                    simple_formatting_prompt,
                     formatting_response
                 )
 
@@ -429,7 +429,7 @@ class AnswerPipeline:
             self.debugger.save_debug_log()
 
             return extraction_response, formatting_response
-            
+
         except Exception as e:
             error_msg = f"Unexpected error in pipeline: {str(e)}"
             logger.error(error_msg, exc_info=True)
@@ -540,18 +540,18 @@ class AnswerPipeline:
     async def _attempt_multi_strategy_extraction(self, query: str, context: str) -> Dict[str, Any]:
         """
         Attempt extraction using multiple strategies with debug logging
-        
+
         Args:
             query: The user's question
             context: The retrieved context
-            
+
         Returns:
             Dictionary with extraction response (always succeeds with some strategy)
         """
         from core.config import model_config
         from llm.pipeline.validation import ANSWER_SCHEMA
         from llm.prompts.extraction_prompt import generate_extraction_prompt_v2, generate_extraction_prompt_legacy, generate_extraction_prompt_simple
-        
+
         # Strategy definitions
         strategies = [
             ("v2_full", "Full V2 prompt with enhanced comprehensiveness"),
@@ -560,11 +560,11 @@ class AnswerPipeline:
             ("legacy_fallback", "Original legacy prompt"),
             ("content_extraction", "Extract usable content from any response")
         ]
-        
+
         for strategy_name, description in strategies:
             try:
                 logger.info(f"Attempting extraction strategy: {description}")
-                
+
                 if strategy_name == "v2_full":
                     # Strategy 1: Full V2 prompt with JSON validation
                     prompt = generate_extraction_prompt_v2(query, context)
@@ -575,7 +575,7 @@ class AnswerPipeline:
                         validate_json=True,
                         json_schema=ANSWER_SCHEMA,
                     )
-                    
+
                 elif strategy_name == "v2_reduced":
                     # Strategy 2: V2 prompt with reduced context (if context is large)
                     if len(context) > 2000:
@@ -583,7 +583,7 @@ class AnswerPipeline:
                         prompt = generate_extraction_prompt_v2(query, reduced_context)
                     else:
                         prompt = generate_extraction_prompt_v2(query, context)
-                    
+
                     response = await self.llm_service.async_chat_completion(
                         prompt=prompt,
                         model=model_config.extraction_model,
@@ -591,7 +591,7 @@ class AnswerPipeline:
                         validate_json=True,
                         json_schema=ANSWER_SCHEMA,
                     )
-                    
+
                 elif strategy_name == "v2_simple":
                     # Strategy 3: Simplified V2 prompt
                     prompt = generate_extraction_prompt_simple(query, context)
@@ -602,7 +602,7 @@ class AnswerPipeline:
                         validate_json=True,
                         json_schema=ANSWER_SCHEMA,
                     )
-                    
+
                 elif strategy_name == "legacy_fallback":
                     # Strategy 4: Legacy prompt as fallback
                     prompt = generate_extraction_prompt_legacy(query, context)
@@ -613,7 +613,7 @@ class AnswerPipeline:
                         validate_json=True,
                         json_schema=ANSWER_SCHEMA,
                     )
-                    
+
                 elif strategy_name == "content_extraction":
                     # Strategy 5: Extract usable content from any response (no JSON validation)
                     prompt = f"Based on this context, answer this question comprehensively: {query}\n\nContext: {context}"
@@ -623,41 +623,41 @@ class AnswerPipeline:
                         max_tokens=model_config.max_tokens,
                         validate_json=False,  # No validation - accept any response
                     )
-                    
+
                     # Convert raw response to expected JSON format
                     if "content" in response and response["content"]:
                         response["content"] = f'{{"answer": "{response["content"].replace('"', '\"')}", "sources": [], "confidence": 0.7}}'
-                
+
                 # Log this attempt
                 success = self._is_valid_response(response)
                 self.debugger.log_extraction_attempt(strategy_name, prompt, response, success)
-                
+
                 # Check if this strategy succeeded
                 if success:
                     logger.info(f"Extraction succeeded with strategy: {description}")
                     return response
                 else:
                     logger.warning(f"Strategy {strategy_name} failed: {response.get('error', 'Invalid response')}")
-                    
+
             except Exception as e:
                 logger.warning(f"Strategy {strategy_name} failed with exception: {str(e)}")
                 # Log the failed attempt
                 error_response = {"error": str(e)}
                 self.debugger.log_extraction_attempt(strategy_name, "Error occurred before prompt generation", error_response, False)
                 continue
-        
+
         # Final fallback: create a minimal valid response
         logger.error("All extraction strategies failed, creating fallback response")
         self.debugger.add_error("All extraction strategies failed")
         return self._create_fallback_response(query, context)
-    
+
     def _is_valid_response(self, response: Dict[str, Any]) -> bool:
         """
         Check if a response is valid and usable
-        
+
         Args:
             response: The response to validate
-            
+
         Returns:
             True if response is valid and usable
         """
@@ -669,20 +669,20 @@ class AnswerPipeline:
         if len(response.get("content", "").strip()) < 10:
             return False
         return True
-    
+
     def _create_fallback_response(self, query: str, context: str) -> Dict[str, Any]:
         """
         Create a fallback response that always works
-        
+
         Args:
             query: The user's question
             context: The retrieved context
-            
+
         Returns:
             Dictionary with fallback response
         """
         fallback_content = '{{"answer": "Unable to process the response. Please try rephrasing your question or contact a manager.", "sources": [], "confidence": 0.3}}'
-        
+
         return {
             "content": fallback_content,
             "model": "fallback",

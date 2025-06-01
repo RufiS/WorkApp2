@@ -30,16 +30,16 @@ logger = logging.getLogger(__name__)
 
 class QueryController:
     """Controller responsible for query processing and result display."""
-    
+
     def __init__(self, app_orchestrator: Optional[Any] = None) -> None:
         """Initialize the query controller.
-        
+
         Args:
             app_orchestrator: The main application orchestrator for service coordination
         """
         self.app_orchestrator = app_orchestrator
         self.logger = logger
-    
+
     @with_advanced_retry(max_attempts=2, backoff_factor=1.5)
     @with_error_tracking()
     async def process_query_async(
@@ -210,8 +210,8 @@ class QueryController:
             }
 
     def process_query(
-        self, 
-        query: str, 
+        self,
+        query: str,
         debug_mode: bool = False
     ) -> None:
         """Process a query and display the results in the Streamlit UI.
@@ -223,7 +223,7 @@ class QueryController:
         if not self.app_orchestrator:
             st.error("Application orchestrator not available")
             return
-            
+
         try:
             # Get services
             doc_processor, llm_service, retrieval_system = self.app_orchestrator.get_services()
@@ -306,7 +306,7 @@ class QueryController:
 
                 # Display debug information if enabled
                 self._display_debug_info(debug_mode, results, query, formatted_answer)
-                
+
             else:
                 display_error_message(
                     "Failed to generate a formatted answer",
@@ -323,16 +323,16 @@ class QueryController:
                 error_msg,
                 suggestions=["Try again later", "Check the application logs for more details"],
             )
-    
+
     def _display_debug_info(
-        self, 
-        debug_mode: bool, 
-        results: Dict[str, Any], 
-        query: str, 
+        self,
+        debug_mode: bool,
+        results: Dict[str, Any],
+        query: str,
         formatted_answer: str
     ) -> None:
         """Display debug information if debug mode is enabled.
-        
+
         Args:
             debug_mode: Whether debug mode is enabled
             results: Query processing results
@@ -366,31 +366,31 @@ class QueryController:
                     st.write(f"Retrieval time: {results['retrieval']['time']:.2f} seconds")
                 if "retrieval" in results and "chunks" in results["retrieval"]:
                     st.write(f"Chunks retrieved: {results['retrieval']['chunks']}")
-    
+
     def validate_query_inputs(self, query: str, has_index: bool) -> Optional[str]:
         """Validate query inputs and return error message if invalid.
-        
+
         Args:
             query: The user's query
             has_index: Whether the system has an index available
-            
+
         Returns:
             Error message if validation fails, None if valid
         """
         if not query or query.strip() == "":
             return "Please enter a question"
-            
+
         if not has_index:
             return "Please upload documents first to build an index"
-            
+
         if len(query.strip()) < 3:
             return "Please enter a more detailed question (at least 3 characters)"
-            
+
         return None
-    
+
     def get_query_suggestions(self) -> list[str]:
         """Get suggested queries for the user.
-        
+
         Returns:
             List of suggested query strings
         """

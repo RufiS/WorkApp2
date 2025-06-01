@@ -15,7 +15,7 @@ from llm.prompts.sanitizer import sanitize_input
 
 __all__ = [
     'generate_extraction_prompt',
-    'generate_extraction_prompt_v2', 
+    'generate_extraction_prompt_v2',
     'generate_extraction_prompt_legacy',
     'generate_extraction_prompt_simple',
     'generate_formatting_prompt',

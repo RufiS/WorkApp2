@@ -32,24 +32,24 @@ class EmbeddingService:
             model_name: Name of the embedding model to use (defaults to config value)
         """
         self.model_name = model_name or retrieval_config.embedding_model
-        
+
         # Detect and configure device (GPU/CPU)
         self.device = self._get_device()
-        
+
         # Initialize embedding model with proper device
         logger.info(f"Initializing SentenceTransformer model '{self.model_name}' on device: {self.device}")
         self.model = SentenceTransformer(self.model_name, device=self.device)
         self.embedding_dim = self.model.get_sentence_embedding_dimension()
-        
+
         # Initialize metrics tracking
         self.embedding_times = deque(maxlen=100)  # Keep last 100 embedding times
-        
+
         logger.info(f"Embedding service initialized with model {self.model_name}, dimension: {self.embedding_dim}, device: {self.device}")
 
     @with_timing(threshold=1.0)
     def embed_texts(
-        self, 
-        texts: Union[List[str], Sequence[Union[Dict[str, Any], str]]], 
+        self,
+        texts: Union[List[str], Sequence[Union[Dict[str, Any], str]]],
         batch_size: Optional[int] = None
     ) -> np.ndarray:
         """
@@ -92,7 +92,7 @@ class EmbeddingService:
         # Embed in batches
         all_embeddings = []
         invalid_batches = 0
-        
+
         for i in range(0, len(text_strings), batch_size):
             batch_texts = text_strings[i : i + batch_size]
 
@@ -115,11 +115,11 @@ class EmbeddingService:
             except Exception as e:
                 logger.error(f"Error embedding batch {i//batch_size + 1}: {str(e)}")
                 invalid_batches += 1
-                
+
                 # If this is the first batch and it fails, re-raise the exception
                 if i == 0:
                     raise
-                
+
                 # Otherwise, log the error and continue with remaining batches
                 logger.warning(f"Continuing with remaining batches after error in batch {i//batch_size + 1}")
 
@@ -167,18 +167,18 @@ class EmbeddingService:
             start_time = time.time()
             embedding = self.model.encode([query])
             embedding_time = time.time() - start_time
-            
+
             # Track embedding time
             self.embedding_times.append(embedding_time)
-            
+
             # Validate dimensions
             if embedding.shape[1] != self.embedding_dim:
                 error_msg = f"Query embedding dimension mismatch: got {embedding.shape[1]}, expected {self.embedding_dim}"
                 logger.error(error_msg)
                 raise ValueError(error_msg)
-            
+
             return embedding
-            
+
         except Exception as e:
             logger.error(f"Error embedding query: {str(e)}")
             raise ValueError(f"Failed to embed query: {str(e)}")
@@ -195,7 +195,7 @@ class EmbeddingService:
         """
         text_strings = []
         invalid_count = 0
-        
+
         for item in texts:
             if isinstance(item, dict) and "text" in item:
                 if not item["text"] or not isinstance(item["text"], str):
@@ -219,11 +219,11 @@ class EmbeddingService:
                 logger.error(f"More than 50% of items are invalid ({invalid_count}/{len(texts)})")
 
         return text_strings
-    
+
     def _get_device(self) -> str:
         """
         Determine the best device to use for embeddings
-        
+
         Returns:
             Device string ('cuda', 'mps', or 'cpu')
         """
@@ -232,23 +232,23 @@ class EmbeddingService:
             if not performance_config.use_gpu_for_faiss:
                 logger.info("GPU usage disabled in config, using CPU for embeddings")
                 return 'cpu'
-            
+
             # Check for CUDA (NVIDIA GPU)
             if torch.cuda.is_available():
                 gpu_count = torch.cuda.device_count()
                 gpu_name = torch.cuda.get_device_name(0) if gpu_count > 0 else "Unknown"
                 logger.info(f"CUDA GPU detected: {gpu_name} (devices: {gpu_count})")
                 return 'cuda'
-            
+
             # Check for MPS (Apple Silicon GPU)
             if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
                 logger.info("Apple MPS GPU detected")
                 return 'mps'
-            
+
             # Fallback to CPU
             logger.info("No GPU detected, using CPU for embeddings")
             return 'cpu'
-            
+
         except Exception as e:
             logger.warning(f"Error detecting GPU device: {str(e)}, falling back to CPU")
             return 'cpu'
@@ -261,7 +261,7 @@ class EmbeddingService:
             "device": self.device,
             "max_seq_length": getattr(self.model, "max_seq_length", None),
         }
-        
+
         # Add GPU info if available
         if self.device == 'cuda' and torch.cuda.is_available():
             info.update({
@@ -270,7 +270,7 @@ class EmbeddingService:
                 "gpu_memory_allocated": torch.cuda.memory_allocated(0),
                 "gpu_memory_cached": torch.cuda.memory_reserved(0)
             })
-        
+
         return info
 
     def get_metrics(self) -> Dict[str, Any]:
@@ -298,7 +298,7 @@ class EmbeddingService:
                 "max_embedding_time": 0.0,
                 "recent_embedding_time": 0.0,
             })
-        
+
         # Add GPU metrics if using GPU
         if self.device == 'cuda' and torch.cuda.is_available():
             try:

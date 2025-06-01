@@ -15,11 +15,11 @@ from utils.ui import display_debug_info_for_index
 def render_config_sidebar(args, doc_processor) -> bool:
     """
     Render the configuration sidebar and return debug mode status
-    
+
     Args:
         args: Command line arguments
         doc_processor: Document processor instance
-        
+
     Returns:
         bool: Debug mode status
     """
@@ -47,7 +47,7 @@ def render_config_sidebar(args, doc_processor) -> bool:
 
         # Configuration section
         st.subheader("Configuration")
-        
+
         # Check if there are pending changes
         has_pending_changes = (
             st.session_state.pending_config["retrieval_k"] != retrieval_config.top_k or
@@ -61,7 +61,7 @@ def render_config_sidebar(args, doc_processor) -> bool:
             st.session_state.pending_config["enhanced_mode"] != retrieval_config.enhanced_mode or
             st.session_state.pending_config["vector_weight"] != retrieval_config.vector_weight
         )
-        
+
         # Show pending changes indicator
         if has_pending_changes:
             st.warning("⚠️ Pending configuration changes")
@@ -85,7 +85,7 @@ def render_config_sidebar(args, doc_processor) -> bool:
             help="Minimum similarity score for retrieved chunks (higher = more strict)",
         )
         st.session_state.pending_config["similarity_threshold"] = similarity_threshold
-        
+
         # Apply and Reset buttons
         col1, col2 = st.columns(2)
         with col1:
@@ -101,7 +101,7 @@ def render_config_sidebar(args, doc_processor) -> bool:
                 performance_config.enable_reranking = st.session_state.pending_config["enable_reranking"]
                 retrieval_config.enhanced_mode = st.session_state.pending_config["enhanced_mode"]
                 retrieval_config.vector_weight = st.session_state.pending_config["vector_weight"]
-                
+
                 # Update config files
                 config_updates = {
                     "retrieval": {
@@ -124,7 +124,7 @@ def render_config_sidebar(args, doc_processor) -> bool:
                 config_manager.update_config(config_updates)
                 st.success("✅ Configuration applied successfully!")
                 st.rerun()
-                
+
         with col2:
             if st.button("↩️ Reset", help="Reset all changes to current values"):
                 # Reset pending config to current values

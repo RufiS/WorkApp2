@@ -37,10 +37,10 @@ class StorageManager:
         logger.info(f"Storage manager initialized for model {embedding_model_name}, dim {embedding_dim}")
 
     def save_index(
-        self, 
-        index: faiss.Index, 
-        texts: List[Any], 
-        index_dir: Optional[str] = None, 
+        self,
+        index: faiss.Index,
+        texts: List[Any],
+        index_dir: Optional[str] = None,
         dry_run: bool = False
     ) -> None:
         """
@@ -164,7 +164,7 @@ class StorageManager:
         paths = self._get_file_paths(index_dir)
 
         exists = os.path.exists(paths["index"]) and os.path.exists(paths["texts"])
-        
+
         if exists:
             logger.debug(f"Index files found at {index_dir}")
         else:
@@ -235,7 +235,7 @@ class StorageManager:
 
             # Ensure directory exists
             os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-            
+
             # Extract text content from chunk dictionaries if needed
             text_content = []
             for item in texts:
@@ -245,29 +245,29 @@ class StorageManager:
                     text_content.append(item)
                 else:
                     text_content.append(str(item))
-            
+
             # Save with robust error handling
             logger.debug(f"Saving {len(text_content)} texts to {temp_path}")
-            
+
             # Try numpy save with explicit error checking
             try:
                 text_array = np.array(text_content, dtype=object)
                 logger.debug(f"Created numpy array with shape: {text_array.shape}")
-                
+
                 # Use explicit file writing for better error handling
                 with open(temp_path, 'wb') as f:
                     np.save(f, text_array)
-                
+
                 # Verify temp file was created and has content
                 if not os.path.exists(temp_path):
                     raise IOError(f"Temp file was not created: {temp_path}")
-                
+
                 file_size = os.path.getsize(temp_path)
                 if file_size == 0:
                     raise IOError(f"Temp file is empty: {temp_path}")
-                    
+
                 logger.debug(f"Successfully created temp file: {temp_path} ({file_size} bytes)")
-                
+
             except Exception as numpy_error:
                 logger.error(f"Numpy save failed: {numpy_error}")
                 # Fallback: save as JSON if numpy fails
@@ -278,11 +278,11 @@ class StorageManager:
                 # Update temp_path for the JSON file
                 temp_path = temp_path.replace('.npy', '.json')
                 final_path = final_path.replace('.npy', '.json')
-            
+
             # Atomic move
             os.replace(temp_path, final_path)
             logger.debug(f"Texts saved to {final_path}")
-            
+
         except Exception as e:
             # Clean up temp file if it exists
             if os.path.exists(temp_path):
@@ -384,7 +384,7 @@ class StorageManager:
         for name, path in paths.items():
             if name.startswith("temp_"):
                 continue
-            
+
             if os.path.exists(path):
                 stat = os.stat(path)
                 info["files"][name] = {

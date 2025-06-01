@@ -26,7 +26,7 @@ from utils.error_handling.enhanced_decorators import (
 __all__ = [
     # Basic decorators
     'with_retry',
-    'with_error_handling', 
+    'with_error_handling',
     'with_recovery_strategy',
     'RetryableError',
     'ConfigurationError',

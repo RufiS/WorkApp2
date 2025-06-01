@@ -97,7 +97,7 @@ class MetricsTracker:
             Dictionary with performance summary
         """
         metrics = self.get_metrics()
-        
+
         # Calculate tokens per request
         if self.total_requests > 0:
             metrics["avg_tokens_per_request"] = self.total_tokens / self.total_requests

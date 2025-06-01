@@ -11,13 +11,13 @@ from .query_models import QueryRequest, QueryResponse, SearchResult
 from .config_models import AppConfig, RetrievalConfig, PerformanceConfig
 
 __all__ = [
-    "DocumentModel", 
-    "ChunkModel", 
+    "DocumentModel",
+    "ChunkModel",
     "MetadataModel",
-    "QueryRequest", 
-    "QueryResponse", 
+    "QueryRequest",
+    "QueryResponse",
     "SearchResult",
-    "AppConfig", 
-    "RetrievalConfig", 
+    "AppConfig",
+    "RetrievalConfig",
     "PerformanceConfig"
 ]

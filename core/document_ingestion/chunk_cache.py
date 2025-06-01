@@ -28,42 +28,42 @@ class ChunkCacheEntry:
 
 class ChunkCache:
     """Manages caching of document chunks"""
-    
+
     def __init__(self, cache_size: Optional[int] = None, enable_cache: Optional[bool] = None):
         """
         Initialize the chunk cache
-        
+
         Args:
             cache_size: Maximum number of cache entries (None for config default)
             enable_cache: Whether caching is enabled (None for config default)
         """
         self.cache_size = cache_size or performance_config.chunk_cache_size
         self.enable_cache = enable_cache if enable_cache is not None else performance_config.enable_chunk_cache
-        
+
         self.cache = {}
         self.cache_hits = 0
         self.cache_misses = 0
-        
+
         logger.info(f"Chunk cache initialized: size={self.cache_size}, enabled={self.enable_cache}")
-    
+
     def get_cache_key(self, file_path: str, chunk_size: int, chunk_overlap: int) -> str:
         """
         Generate a cache key for document chunks
-        
+
         Args:
             file_path: Path to the document file
             chunk_size: Size of chunks
             chunk_overlap: Overlap between chunks
-            
+
         Returns:
             Cache key string
         """
         try:
             import os
-            
+
             # Get file modification time
             mtime = os.path.getmtime(file_path)
-            
+
             # Create a dictionary of chunking parameters
             params_dict = {
                 "file_path": file_path,
@@ -71,7 +71,7 @@ class ChunkCache:
                 "chunk_size": chunk_size,
                 "chunk_overlap": chunk_overlap,
             }
-            
+
             # Convert to JSON and hash
             params_json = json.dumps(params_dict, sort_keys=True)
             return hashlib.md5(params_json.encode()).hexdigest()
@@ -80,11 +80,11 @@ class ChunkCache:
             # Return a fallback key
             fallback = f"{file_path}:{chunk_size}:{chunk_overlap}"
             return hashlib.md5(fallback.encode()).hexdigest()
-    
+
     def add_to_cache(self, key: str, chunks: List[Dict[str, Any]], ttl: Optional[float] = None) -> None:
         """
         Add chunks to the cache
-        
+
         Args:
             key: Cache key
             chunks: Chunks to cache
@@ -92,39 +92,39 @@ class ChunkCache:
         """
         if not self.enable_cache:
             return
-        
+
         try:
             # Create cache entry
             entry = ChunkCacheEntry(chunks=chunks, ttl=ttl or 3600 * 24)
-            
+
             # Add to cache
             self.cache[key] = entry
-            
+
             # Trim cache if needed
             self._trim_cache_if_needed(key, entry)
-            
+
             logger.debug(f"Added {len(chunks)} chunks to cache with key {key[:8]}")
         except Exception as e:
             CommonErrorHandler.handle_processing_error("ChunkCache", "cache addition", e)
-    
+
     def get_from_cache(self, key: str) -> Optional[List[Dict[str, Any]]]:
         """
         Get chunks from the cache
-        
+
         Args:
             key: Cache key
-            
+
         Returns:
             Cached chunks or None if not found
         """
         if not self.enable_cache:
             return None
-        
+
         try:
             # Check if key exists in cache
             if key in self.cache:
                 entry = self.cache[key]
-                
+
                 # Check if entry is expired
                 if entry.is_expired():
                     # Remove expired entry
@@ -132,13 +132,13 @@ class ChunkCache:
                     self.cache_misses += 1
                     logger.debug(f"Cache entry expired for key {key[:8]}")
                     return None
-                
+
                 # Update timestamp to keep entry fresh
                 entry.timestamp = time.time()
                 self.cache_hits += 1
                 logger.debug(f"Cache hit for key {key[:8]}")
                 return entry.chunks
-            
+
             self.cache_misses += 1
             logger.debug(f"Cache miss for key {key[:8]}")
             return None
@@ -146,23 +146,23 @@ class ChunkCache:
             CommonErrorHandler.handle_processing_error("ChunkCache", "cache retrieval", e)
             self.cache_misses += 1
             return None
-    
+
     def _trim_cache_if_needed(self, new_key: str, new_entry: ChunkCacheEntry) -> None:
         """
         Trim cache if it exceeds the maximum size
-        
+
         Args:
             new_key: Key of the newly added entry
             new_entry: The newly added entry
         """
         if len(self.cache) <= self.cache_size:
             return
-        
+
         try:
             # Remove oldest entry
             if self.cache:
                 oldest_key = min(
-                    self.cache.keys(), 
+                    self.cache.keys(),
                     key=lambda k: self.cache[k].timestamp
                 )
                 del self.cache[oldest_key]
@@ -180,24 +180,24 @@ class ChunkCache:
                     self.cache = {}
                     self.cache[new_key] = new_entry
                     logger.info(f"Cache reset with single entry for key {new_key[:8]}")
-    
+
     def clear_cache(self) -> None:
         """Clear all cached entries"""
         self.cache.clear()
         self.cache_hits = 0
         self.cache_misses = 0
         logger.info("Cache cleared")
-    
+
     def get_cache_stats(self) -> Dict[str, Any]:
         """
         Get cache statistics
-        
+
         Returns:
             Dictionary with cache statistics
         """
         total_accesses = self.cache_hits + self.cache_misses
         hit_rate = self.cache_hits / total_accesses if total_accesses > 0 else 0.0
-        
+
         return {
             "cache_hits": self.cache_hits,
             "cache_misses": self.cache_misses,
@@ -206,29 +206,29 @@ class ChunkCache:
             "hit_rate": hit_rate,
             "enabled": self.enable_cache
         }
-    
+
     def cleanup_expired_entries(self) -> int:
         """
         Remove all expired entries from cache
-        
+
         Returns:
             Number of entries removed
         """
         if not self.enable_cache:
             return 0
-        
+
         try:
             expired_keys = [
-                key for key, entry in self.cache.items() 
+                key for key, entry in self.cache.items()
                 if entry.is_expired()
             ]
-            
+
             for key in expired_keys:
                 del self.cache[key]
-            
+
             if expired_keys:
                 logger.info(f"Cleaned up {len(expired_keys)} expired cache entries")
-            
+
             return len(expired_keys)
         except Exception as e:
             CommonErrorHandler.handle_processing_error("ChunkCache", "expired entry cleanup", e)
