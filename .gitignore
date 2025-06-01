@@ -8,6 +8,12 @@ __pycache__/
 venv/
 env/
 
+# Generated Chunks
+current_index/
+
+# Generated Data
+data/
+
 # Editor configs
 .vscode/
 .idea/

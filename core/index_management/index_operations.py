@@ -157,7 +157,8 @@ def load_index(
     if not os.path.exists(index_file) or not os.path.exists(texts_file):
         logger.warning(f"Index files not found at {resolved_index_path}")
         # Get embedding dimension from current embedding service
-        from utils.common.embedding_service import embedding_service
+        from core.embeddings.embedding_service import EmbeddingService
+        embedding_service = EmbeddingService()
         dimension = embedding_service.embedding_dim  # Use current model dimension
         if os.path.exists(metadata_file):
             try:
@@ -243,7 +244,8 @@ def _load_index_from_disk(
         # Check if index file exists
         if not os.path.exists(index_file):
             logger.warning(f"Index file not found at {index_file}")
-            from utils.common.embedding_service import embedding_service
+            from core.embeddings.embedding_service import EmbeddingService
+            embedding_service = EmbeddingService()
             dimension = embedding_service.embedding_dim  # Use current model dimension
             index = faiss.IndexFlatL2(dimension)
             texts = []
@@ -253,7 +255,8 @@ def _load_index_from_disk(
             idx = faiss.read_index(index_file)
         except Exception as e:
             logger.error(f"Failed to read index file: {str(e)}", exc_info=True)
-            from utils.common.embedding_service import embedding_service
+            from core.embeddings.embedding_service import EmbeddingService
+            embedding_service = EmbeddingService()
             dimension = embedding_service.embedding_dim  # Use current model dimension
             index = faiss.IndexFlatL2(dimension)
             texts = []
@@ -318,7 +321,8 @@ def _load_index_from_disk(
         # Verify the index is properly loaded
         if index is None:
             logger.error("Index failed to load properly")
-            from utils.common.embedding_service import embedding_service
+            from core.embeddings.embedding_service import EmbeddingService
+            embedding_service = EmbeddingService()
             dimension = embedding_service.embedding_dim  # Use current model dimension
             index = faiss.IndexFlatL2(dimension)
             texts = []
@@ -338,7 +342,8 @@ def _load_index_from_disk(
     except Exception as e:
         logger.error(f"Error loading index: {str(e)}", exc_info=True)
         # Create an empty index instead of raising an error
-        from utils.common.embedding_service import embedding_service
+        from core.embeddings.embedding_service import EmbeddingService
+        embedding_service = EmbeddingService()
         dimension = embedding_service.embedding_dim  # Use current model dimension
         index = faiss.IndexFlatL2(dimension)
         texts = []
@@ -500,7 +505,8 @@ def rebuild_index_if_needed(
         clear_index(rebuild_immediately=False, index_path=index_path, dry_run=dry_run)
 
         # Create an empty index with current embedding dimensions
-        from utils.common.embedding_service import embedding_service
+        from core.embeddings.embedding_service import EmbeddingService
+        embedding_service = EmbeddingService()
         dimension = embedding_service.embedding_dim  # Use current model dimension
         index = faiss.IndexFlatL2(dimension)
         save_index(index, [], False, index_path, dry_run=dry_run)

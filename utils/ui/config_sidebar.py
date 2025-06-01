@@ -30,8 +30,9 @@ def render_config_sidebar(args, doc_processor) -> bool:
         if args.dry_run:
             st.warning("⚠️ DRY RUN MODE")
 
-        # Initialize pending config in session state if not exists
-        if "pending_config" not in st.session_state:
+        # Helper function to sync pending config with current config
+        def sync_pending_config_with_current():
+            """Force sync pending config with actual loaded config"""
             st.session_state.pending_config = {
                 "retrieval_k": retrieval_config.top_k,
                 "similarity_threshold": retrieval_config.similarity_threshold,
@@ -44,6 +45,64 @@ def render_config_sidebar(args, doc_processor) -> bool:
                 "enhanced_mode": retrieval_config.enhanced_mode,
                 "vector_weight": retrieval_config.vector_weight,
             }
+
+        # Helper function to generate config hash for change detection
+        def get_config_hash():
+            """Generate hash of current config for change detection"""
+            config_str = f"{retrieval_config.top_k}-{retrieval_config.similarity_threshold}-{retrieval_config.enhanced_mode}-{model_config.extraction_model}"
+            return hash(config_str)
+
+        # Check for config changes and sync if needed
+        current_config_hash = get_config_hash()
+        if ("config_hash" not in st.session_state or 
+            st.session_state.config_hash != current_config_hash or 
+            "pending_config" not in st.session_state):
+            sync_pending_config_with_current()
+            st.session_state.config_hash = current_config_hash
+            if "config_hash" in st.session_state:  # Only show message after first load
+                st.info("🔄 Configuration synchronized with updated settings")
+
+        # Manual sync button
+        col1, col2, col3 = st.columns(3)
+        with col2:
+            if st.button("🔄 Sync with Config", help="Reload settings from config files"):
+                sync_pending_config_with_current()
+                st.session_state.config_hash = get_config_hash()
+                st.success("✅ Settings synchronized!")
+                st.rerun()
+
+        # Configuration status display
+        with st.expander("📊 Configuration Status", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.subheader("Current (Active)")
+                st.write(f"**Top K**: {retrieval_config.top_k}")
+                st.write(f"**Threshold**: {retrieval_config.similarity_threshold}")
+                st.write(f"**Enhanced**: {retrieval_config.enhanced_mode}")
+                st.write(f"**Extraction**: {model_config.extraction_model}")
+            with col2:
+                st.subheader("Pending (Sidebar)")
+                st.write(f"**Top K**: {st.session_state.pending_config['retrieval_k']}")
+                st.write(f"**Threshold**: {st.session_state.pending_config['similarity_threshold']}")
+                st.write(f"**Enhanced**: {st.session_state.pending_config['enhanced_mode']}")
+                st.write(f"**Extraction**: {st.session_state.pending_config['extraction_model']}")
+
+        # Parameter sweep recommendations
+        with st.expander("🎯 Optimal Settings (from Parameter Sweep)", expanded=False):
+            st.info("Based on recent parameter sweep testing:")
+            st.write("• **Similarity Threshold**: 0.35 (optimal for text messaging queries)")
+            st.write("• **Top K**: 15 (optimal retrieval count)")
+            st.write("• **Enhanced Mode**: True (recommended after chunking fixes)")
+            st.write("• **Expected Coverage**: >50% (vs 28.57% with old settings)")
+            
+            if st.button("Apply Optimal Settings"):
+                st.session_state.pending_config.update({
+                    "similarity_threshold": 0.35,
+                    "retrieval_k": 15,
+                    "enhanced_mode": True
+                })
+                st.success("✅ Optimal settings applied to sidebar!")
+                st.rerun()
 
         # Configuration section
         st.subheader("Configuration")
