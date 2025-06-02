@@ -43,6 +43,20 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Preview index changes without writing to disk"
     )
+    
+    # Mode selection arguments (mutually exclusive)
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
+        "-production",
+        action="store_true",
+        help="Launch in production mode with clean, minimal interface"
+    )
+    mode_group.add_argument(
+        "-development",
+        action="store_true",
+        help="Launch in development mode with full debugging features (default)"
+    )
+    
     return parser.parse_args()
 
 
@@ -50,16 +64,20 @@ def main() -> None:
     """Main application entry point."""
     # Parse command line arguments
     args = parse_args()
+    
+    # Determine application mode
+    production_mode = args.production
+    development_mode = args.development or not args.production  # Default to development if neither specified
 
     # Initialize the application orchestrator
     orchestrator = AppOrchestrator()
     orchestrator.set_dry_run_mode(args.dry_run)
 
-    # Initialize controllers
-    ui_controller = UIController(orchestrator)
-    document_controller = DocumentController(orchestrator)
-    query_controller = QueryController(orchestrator)
-    testing_controller = TestingController(orchestrator)
+    # Initialize controllers with mode information
+    ui_controller = UIController(orchestrator, production_mode=production_mode)
+    document_controller = DocumentController(orchestrator, production_mode=production_mode)
+    query_controller = QueryController(orchestrator, production_mode=production_mode)
+    testing_controller = TestingController(orchestrator, production_mode=production_mode)
 
     # Configure the Streamlit page
     ui_controller.configure_page()
@@ -86,35 +104,51 @@ def main() -> None:
         ui_controller.stop_execution()
         return
 
-    # Render document upload section
-    ui_config = orchestrator.get_ui_config()
-    uploads = document_controller.render_upload_section(ui_config, orchestrator.is_dry_run_mode())
+    # Conditionally render sections based on mode
+    debug_mode = False
+    
+    if not production_mode:
+        # Development mode: Show all features
+        # Render document upload section
+        ui_config = orchestrator.get_ui_config()
+        uploads = document_controller.render_upload_section(ui_config, orchestrator.is_dry_run_mode())
 
-    # Process uploaded files if any
-    if uploads:
-        success, message = document_controller.process_uploaded_files(uploads, orchestrator.is_dry_run_mode())
-        if success:
-            # Display index statistics after successful upload
+        # Process uploaded files if any
+        if uploads:
+            success, message = document_controller.process_uploaded_files(uploads, orchestrator.is_dry_run_mode())
+            if success:
+                # Display index statistics after successful upload
+                document_controller.display_index_statistics(ui_config)
+            else:
+                ui_controller.display_error(message)
+        elif orchestrator.has_index():
+            # Display existing index statistics
             document_controller.display_index_statistics(ui_config)
-        else:
-            ui_controller.display_error(message)
-    elif orchestrator.has_index():
-        # Display existing index statistics
-        document_controller.display_index_statistics(ui_config)
 
-    # Show search method status
-    performance_config = orchestrator.get_performance_config()
-    retrieval_config = orchestrator.get_retrieval_config()
-    ui_controller.render_search_method_status(performance_config, retrieval_config)
+        # Show search method status
+        performance_config = orchestrator.get_performance_config()
+        retrieval_config = orchestrator.get_retrieval_config()
+        ui_controller.render_search_method_status(performance_config, retrieval_config)
 
-    # Render configuration sidebar
-    debug_mode = render_config_sidebar(args, doc_processor)
+        # Render configuration sidebar
+        debug_mode = render_config_sidebar(args, doc_processor)
+    else:
+        # Production mode: Ensure index is loaded silently
+        if orchestrator.has_index():
+            try:
+                retrieval_config = orchestrator.get_retrieval_config()
+                doc_processor.load_index(retrieval_config.index_path)
+                logger.info("Index loaded for production mode")
+            except Exception as e:
+                ui_controller.display_error(f"Error loading documents: Please contact administrator")
+                return
 
     # Render the query form
     query, ask_button_pressed = ui_controller.render_query_form()
 
-    # Add systematic testing section
-    testing_controller.render_testing_section()
+    # Add systematic testing section (development mode only)
+    if not production_mode:
+        testing_controller.render_testing_section()
 
     # Process query if submitted
     if ask_button_pressed:
@@ -136,24 +170,25 @@ def main() -> None:
             # Process the query using the query controller
             query_controller.process_query(query, debug_mode=debug_mode)
 
-    # Show debugging roadmap progress
-    with st.expander("🏗️ Debugging Roadmap - Phase B Complete", expanded=False):
-        st.markdown("""
-        **Phase B Complete:** ✅ Systematic Testing Framework
-        - ✅ Multi-engine testing UI implemented
-        - ✅ Configuration comparison system built
-        - ✅ Results matrix generation and analysis
-        - ✅ A/B testing framework for parameter optimization
-        - ✅ TestingController integrated into main app
+    # Show debugging roadmap progress (development mode only)
+    if not production_mode:
+        with st.expander("🏗️ Debugging Roadmap - Phase B Complete", expanded=False):
+            st.markdown("""
+            **Phase B Complete:** ✅ Systematic Testing Framework
+            - ✅ Multi-engine testing UI implemented
+            - ✅ Configuration comparison system built
+            - ✅ Results matrix generation and analysis
+            - ✅ A/B testing framework for parameter optimization
+            - ✅ TestingController integrated into main app
 
-        **Testing Capabilities Now Available:**
-        - 🔬 Single-click testing across all engine configurations
-        - 📊 Automated performance comparison with statistical analysis
-        - 🎯 Clear identification of best-performing settings
-        - 💡 Actionable recommendations for optimization
+            **Testing Capabilities Now Available:**
+            - 🔬 Single-click testing across all engine configurations
+            - 📊 Automated performance comparison with statistical analysis
+            - 🎯 Clear identification of best-performing settings
+            - 💡 Actionable recommendations for optimization
 
-        **Next Phase:** Phase C - Configuration Audit & Resolution
-        """)
+            **Next Phase:** Phase C - Configuration Audit & Resolution
+            """)
 
     logger.info("Application main function completed")
 

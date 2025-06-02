@@ -23,13 +23,15 @@ logger = logging.getLogger(__name__)
 class DocumentController:
     """Controller responsible for document upload and processing operations."""
 
-    def __init__(self, app_orchestrator: Optional[Any] = None) -> None:
+    def __init__(self, app_orchestrator: Optional[Any] = None, production_mode: bool = False) -> None:
         """Initialize the document controller.
 
         Args:
             app_orchestrator: The main application orchestrator for service coordination
+            production_mode: Whether the application is running in production mode
         """
         self.app_orchestrator = app_orchestrator
+        self.production_mode = production_mode
         self.logger = logger
 
     def render_upload_section(self, ui_config: Any, dry_run_mode: bool = False) -> Optional[List[Any]]:

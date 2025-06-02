@@ -84,7 +84,7 @@ class RerankingEngine:
             Tuple of (formatted context string, search time, number of chunks, retrieval scores)
         """
         start_time = time.time()
-        rerank_top_k = rerank_top_k or (top_k * 3)  # Default to 3x top_k for reranking
+        rerank_top_k = rerank_top_k or (top_k * 6)  # Increased to 6x top_k for better workflow coverage
 
         query_preview = query[:50] + "..." if len(query) > 50 else query
         self.logger.info(f"Reranking search for query: '{query_preview}' with top_k={top_k}, rerank_top_k={rerank_top_k}")

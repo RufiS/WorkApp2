@@ -1,11 +1,11 @@
 {
   "retrieval": {
-    "embedding_model": "all-MiniLM-L6-v2",
+    "embedding_model": "intfloat/e5-base-v2",
     "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
     "chunk_size": 1000,
     "chunk_overlap": 200,
     "top_k": 15,
-    "similarity_threshold": 0.35,
+    "similarity_threshold": 0.25,
     "max_context_length": 10000,
     "index_path": "./data/index",
     "enhanced_mode": true,
@@ -37,7 +37,7 @@
   "log_level": "INFO",
   "error_log_path": "./logs/workapp_errors.log",
   "api_keys": {
-    "openai": "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"
+    "openai": "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"
   },
   "page_title": "Document QA",
   "version": "0.4.0",

@@ -111,39 +111,63 @@ class IndexBuilder:
 
     def _create_optimized_index(self, embeddings: np.ndarray) -> faiss.Index:
         """
-        Create optimized index based on dataset size and configuration
+        Create optimized index based on dataset size and FAISS requirements
 
         Args:
             embeddings: Embeddings to build index for
 
         Returns:
-            Optimized FAISS index
+            Optimized FAISS index that meets FAISS clustering requirements
         """
         num_embeddings = len(embeddings)
         logger.info(f"Creating optimized index for {num_embeddings} embeddings")
 
-        # Start with basic flat index
-        index = faiss.IndexFlatL2(self.embedding_dim)
-
-        # Apply optimizations if enabled and dataset is large enough
-        if performance_config.enable_faiss_optimization and num_embeddings > 1000:
-            logger.info("Applying FAISS optimizations for large dataset")
-
-            # Use IVF index for faster search with large datasets
-            # Rule of thumb: nlist = sqrt(num_embeddings), capped at 100
-            nlist = min(int(np.sqrt(num_embeddings)), 100)
-
-            logger.info(f"Creating IVF index with {nlist} clusters")
+        # FAISS clustering requirements: minimum ~39 training points per cluster
+        min_training_per_cluster = 39
+        min_embeddings_for_clustering = 1000  # Conservative threshold
+        
+        # Use flat index for small datasets to avoid clustering warnings
+        if not performance_config.enable_faiss_optimization or num_embeddings < min_embeddings_for_clustering:
+            logger.info(f"Using flat index (dataset size {num_embeddings} < {min_embeddings_for_clustering} threshold)")
+            return faiss.IndexFlatL2(self.embedding_dim)
+        
+        # Calculate proper cluster count based on FAISS requirements
+        # Start with sqrt rule, then validate against training requirements
+        nlist_sqrt = int(np.sqrt(num_embeddings))
+        max_clusters_safe = num_embeddings // min_training_per_cluster
+        
+        # Use the smaller of sqrt rule or safe maximum
+        nlist = min(nlist_sqrt, max_clusters_safe)
+        
+        # Ensure minimum cluster count of 4 for meaningful clustering
+        nlist = max(nlist, 4)
+        
+        # Final safety cap at 256 (reasonable maximum)
+        nlist = min(nlist, 256)
+        
+        # Validate that we have enough training points
+        training_points_per_cluster = num_embeddings / nlist
+        if training_points_per_cluster < min_training_per_cluster:
+            logger.warning(f"Insufficient training points per cluster ({training_points_per_cluster:.1f} < {min_training_per_cluster}), using flat index")
+            return faiss.IndexFlatL2(self.embedding_dim)
+        
+        logger.info(f"Creating IVF index with {nlist} clusters ({training_points_per_cluster:.1f} training points per cluster)")
+        
+        try:
+            # Create IVF index
             quantizer = faiss.IndexFlatL2(self.embedding_dim)
             index = faiss.IndexIVFFlat(quantizer, self.embedding_dim, nlist, faiss.METRIC_L2)
-
+            
             # Train the index with the embeddings
             logger.info("Training IVF index")
             index.train(embeddings)
-        else:
-            logger.info("Using basic flat index (no optimization)")
-
-        return index
+            
+            logger.info(f"Successfully created and trained IVF index with {nlist} clusters")
+            return index
+            
+        except Exception as e:
+            logger.error(f"Failed to create IVF index: {e}, falling back to flat index")
+            return faiss.IndexFlatL2(self.embedding_dim)
 
     def _verify_index(self, index: faiss.Index, embeddings: np.ndarray) -> None:
         """

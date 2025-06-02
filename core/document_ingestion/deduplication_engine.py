@@ -284,7 +284,17 @@ class DeduplicationEngine:
         """
         try:
             dim = embeddings.shape[1]
-            nlist = 100  # Number of Voronoi cells
+            num_embeddings = len(embeddings)
+            
+            # Calculate proper cluster count based on FAISS requirements
+            min_training_per_cluster = 39
+            nlist_sqrt = int(np.sqrt(num_embeddings))
+            max_clusters_safe = num_embeddings // min_training_per_cluster
+            nlist = min(nlist_sqrt, max_clusters_safe, 256)  # Cap at 256
+            nlist = max(nlist, 4)  # Minimum 4 clusters
+            
+            logger.debug(f"Using {nlist} clusters for IVF-PQ deduplication ({num_embeddings} embeddings)")
+            
             m = 16  # Number of subvectors for PQ
             nbits = 8  # Bits per subvector
 
@@ -327,7 +337,16 @@ class DeduplicationEngine:
         """
         try:
             dim = embeddings.shape[1]
-            nlist = 100  # Number of Voronoi cells
+            num_embeddings = len(embeddings)
+            
+            # Calculate proper cluster count based on FAISS requirements
+            min_training_per_cluster = 39
+            nlist_sqrt = int(np.sqrt(num_embeddings))
+            max_clusters_safe = num_embeddings // min_training_per_cluster
+            nlist = min(nlist_sqrt, max_clusters_safe, 256)  # Cap at 256
+            nlist = max(nlist, 4)  # Minimum 4 clusters
+            
+            logger.debug(f"Using {nlist} clusters for IVF deduplication ({num_embeddings} embeddings)")
 
             # Define the IVF quantizer
             quantizer = faiss.IndexFlatL2(dim)

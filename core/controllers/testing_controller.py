@@ -18,13 +18,15 @@ logger = logging.getLogger(__name__)
 class TestingController:
     """Controller for systematic testing UI functionality."""
 
-    def __init__(self, orchestrator):
+    def __init__(self, orchestrator, production_mode: bool = False):
         """Initialize the testing controller.
 
         Args:
             orchestrator: AppOrchestrator instance
+            production_mode: Whether the application is running in production mode
         """
         self.orchestrator = orchestrator
+        self.production_mode = production_mode
         self.logger = logger
 
         # Initialize test runner when retrieval system is available

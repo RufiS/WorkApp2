@@ -12,7 +12,7 @@ import numpy as np
 import faiss
 
 from core.config import performance_config
-from core.embeddings.embedding_service import embedding_service
+from core.embeddings.embedding_service import EmbeddingService
 from utils.logging.error_logging import query_logger
 from utils.logging.error_logging import log_error
 
@@ -23,14 +23,16 @@ logger = logging.getLogger(__name__)
 class SearchEngine:
     """Handles vector similarity search operations"""
 
-    def __init__(self, embedding_dim: int):
+    def __init__(self, embedding_dim: int, embedding_service: EmbeddingService = None):
         """
         Initialize search engine
 
         Args:
             embedding_dim: Dimension of embeddings
+            embedding_service: Embedding service instance to use for query embedding
         """
         self.embedding_dim = embedding_dim
+        self.embedding_service = embedding_service
         logger.info(f"Search engine initialized with dimension {embedding_dim}")
 
     def search(
@@ -147,7 +149,7 @@ class SearchEngine:
             ValueError: If embedding fails
         """
         try:
-            query_embedding = embedding_service.embed_query(query)
+            query_embedding = self.embedding_service.embed_query(query)
 
             # Validate query embedding dimensions
             if query_embedding.shape[1] != self.embedding_dim:
@@ -261,7 +263,7 @@ class SearchEngine:
         """Get search engine statistics"""
         return {
             "embedding_dim": self.embedding_dim,
-            "embedding_service_metrics": embedding_service.get_metrics(),
+            "embedding_service_metrics": self.embedding_service.get_metrics() if self.embedding_service else {},
         }
 
     def validate_index_compatibility(self, index: faiss.Index) -> bool:

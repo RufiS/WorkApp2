@@ -11,7 +11,7 @@ import numpy as np
 import faiss
 
 from core.config import retrieval_config, resolve_path
-from core.embeddings.embedding_service import embedding_service
+from core.embeddings.embedding_service import EmbeddingService
 from core.index_management.gpu_manager import gpu_manager
 from core.vector_index.index_builder import IndexBuilder
 from core.vector_index.storage_manager import StorageManager
@@ -34,8 +34,9 @@ class IndexManager:
         """
         self.embedding_model_name = embedding_model_name or retrieval_config.embedding_model
 
-        # Get embedding dimension from the service
-        self.embedding_dim = embedding_service.embedding_dim
+        # Create our own embedding service instance with the specified model
+        self.embedding_service = EmbeddingService(self.embedding_model_name)
+        self.embedding_dim = self.embedding_service.embedding_dim
 
         # Initialize state variables for backward compatibility
         self.index = None
@@ -45,7 +46,7 @@ class IndexManager:
         # Initialize modular components
         self.index_builder = IndexBuilder(self.embedding_dim)
         self.storage_manager = StorageManager(self.embedding_model_name, self.embedding_dim)
-        self.search_engine = SearchEngine(self.embedding_dim)
+        self.search_engine = SearchEngine(self.embedding_dim, self.embedding_service)
 
         # GPU availability from manager
         self.gpu_available = gpu_manager.gpu_available
@@ -109,8 +110,8 @@ class IndexManager:
         Returns:
             NumPy array of embeddings
         """
-        # Delegate to embedding service
-        return embedding_service.embed_texts(chunks, batch_size)
+        # Delegate to our embedding service instance
+        return self.embedding_service.embed_texts(chunks, batch_size)
 
     def build_index(self, embeddings: np.ndarray) -> faiss.Index:
         """
@@ -264,8 +265,8 @@ class IndexManager:
         Returns:
             NumPy array of query embedding
         """
-        # Delegate to embedding service
-        return embedding_service.embed_query(query)
+        # Delegate to our embedding service instance
+        return self.embedding_service.embed_query(query)
 
     def get_metrics(self) -> Dict[str, Any]:
         """
@@ -284,8 +285,8 @@ class IndexManager:
             "index_size": self.index.ntotal if self.index else 0,
         }
 
-        # Get embedding metrics from embedding service
-        embedding_metrics = embedding_service.get_metrics()
+        # Get embedding metrics from our embedding service instance
+        embedding_metrics = self.embedding_service.get_metrics()
         metrics.update({
             "avg_embedding_time": embedding_metrics.get("avg_embedding_time", 0.0),
             "min_embedding_time": embedding_metrics.get("min_embedding_time", 0.0),

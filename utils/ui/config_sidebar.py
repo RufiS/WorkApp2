@@ -23,6 +23,10 @@ def render_config_sidebar(args, doc_processor) -> bool:
     Returns:
         bool: Debug mode status
     """
+    # Hide sidebar completely in production mode
+    if hasattr(args, 'production') and args.production:
+        return False
+        
     with st.sidebar:
         st.header("Settings")
 

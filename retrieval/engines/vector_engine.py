@@ -131,8 +131,8 @@ class VectorEngine:
                 # Create a simplified version for comparison (lowercase, whitespace normalized)
                 simplified_text = " ".join(text.lower().split())
 
-                # Skip if we've seen a very similar text
-                if any(self._calculate_text_similarity(simplified_text, seen) > 0.8 for seen in seen_texts):
+                # Skip if we've seen a very similar text (reduced threshold for workflow preservation)
+                if any(self._calculate_text_similarity(simplified_text, seen) > 0.6 for seen in seen_texts):
                     self.logger.debug(f"Skipping duplicate chunk: {text[:50]}...")
                     duplicates_found += 1
                     continue

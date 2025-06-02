@@ -18,13 +18,15 @@ logger = logging.getLogger(__name__)
 class UIController:
     """Controller responsible for UI rendering and layout management."""
 
-    def __init__(self, app_orchestrator: Optional[Any] = None) -> None:
+    def __init__(self, app_orchestrator: Optional[Any] = None, production_mode: bool = False) -> None:
         """Initialize the UI controller.
 
         Args:
             app_orchestrator: The main application orchestrator for service coordination
+            production_mode: Whether the application is running in production mode
         """
         self.app_orchestrator = app_orchestrator
+        self.production_mode = production_mode
         self.logger = logger
 
     def configure_page(self) -> None:
@@ -60,7 +62,8 @@ class UIController:
         Args:
             dry_run_mode: Whether the application is in dry-run mode
         """
-        if dry_run_mode:
+        # Only show dry-run indicator in development mode
+        if dry_run_mode and not self.production_mode:
             st.warning("⚠️ DRY RUN MODE: Index changes will not be saved to disk")
             self.logger.info("Dry-run mode indicator displayed")
 
@@ -71,6 +74,10 @@ class UIController:
             performance_config: Performance configuration object
             retrieval_config: Retrieval configuration object
         """
+        # Only show search method status in development mode
+        if self.production_mode:
+            return
+            
         col1, col2 = st.columns([3, 1])
         with col1:
             # Determine and display current search method
