@@ -16,11 +16,15 @@ def generate_formatting_prompt(raw_answer: str) -> str:
         A formatted prompt string
     """
     raw_answer = sanitize_input(raw_answer)
+    
+    # Handle special case in Python code to avoid LLM confusion
+    if raw_answer.strip() == "Answer not found. Please contact a manager or fellow dispatcher.":
+        return raw_answer
+    
     return textwrap.dedent(
         f"""
         System: You are a formatting assistant for Karls Technology dispatchers.
-                If the raw_answer reads exactly "Answer not found. Please contact a manager or fellow dispatcher.",
-                return it unchanged. Otherwise, format the answer as follows:
+                Format the answer according to the following rules:
 
         FORMATTING RULES:
         - Preserve ALL technical details, explanations, and procedural steps from the raw_answer - DO NOT remove ANY information.

@@ -1,12 +1,61 @@
 # WorkApp2 TODO Items
 
-## High Priority - LLM Formatting Pipeline Issue
+## High Priority - Critical Architecture Violations
 
-### **CRITICAL: Formatting Prompt Echoing Instructions Instead of Following Them**
+### **CRITICAL: Regex-Based Solutions Violating Core LLM Principles**
+
+**Issue Discovered:** 2025-06-02  
+**Reporter:** Code analysis via .clinerules violation audit  
+**Status:** Multiple violations identified, refactoring required  
+
+#### **Major Rule Violations in Core QA System:**
+
+##### **1. `llm/pipeline/validation.py` - HEAVILY VIOLATES THE RULE**
+
+This file has **15 regex operations** directly in the QA pipeline:
+
+- `re.findall()` for extracting JSON blocks from LLM responses
+- `re.sub()` for fixing malformed JSON (trailing commas, quotes, etc.)
+- `re.search()` for pattern matching answer/confidence/sources
+- This is core QA system functionality for processing LLM responses
+
+##### **2. `llm/prompts/formatting_prompt.py` - VIOLATES THE RULE**
+
+- `re.findall(r"^([A-Z][A-Za-z\s]+):$", raw_answer, re.MULTILINE)` - extracting section headers
+- `re.search(r"Confidence: (\d+)%", raw_answer)` - finding confidence scores
+- This is directly part of the answer formatting pipeline
+
+##### **3. `llm/prompt_generator.py` - VIOLATES THE RULE**
+
+- `re.split(r"(?<=[.!?]) +", context)` - splitting sentences
+- `re.split(r"[.!?]+", context)` - splitting sentences
+- This is part of prompt generation for the QA system
+
+#### **The Irony**
+
+The most problematic violation is in `llm/pipeline/validation.py` - this file is trying to "fix" LLM responses using regex patterns instead of letting the LLM handle its own output properly. This is exactly what the rule is meant to prevent!
+
+#### **Acceptable Uses Found:**
+
+- `utils/ui/text_processing.py` - UI display utilities
+- `tests/test_*.py` - Testing frameworks
+- `utils/common/validation_utils.py` - General validation
+- `core/document_ingestion/` - Document preprocessing
+
+#### **The Problem**
+
+We've been using regex as a "band-aid" to fix LLM output issues instead of improving the LLM prompts and reasoning. This violates the core principle that the QA system should rely on LLM capabilities, not pattern matching.
+
+---
+
+## ✅ COMPLETED - LLM Formatting Pipeline Issue
+
+### **FIXED: Formatting Prompt Echoing Instructions Instead of Following Them**
 
 **Issue Discovered:** 2025-06-02  
 **Reporter:** User via FFLBoss query investigation  
-**Status:** Root cause identified, fix pending  
+**Status:** ✅ **COMPLETED** - Fixed on 2025-06-02  
+**Solution:** Moved conditional logic from LLM prompt to Python code  
 
 #### **Problem Description**
 The LLM formatting model is echoing back the raw prompt instructions instead of following them, causing malformed responses to be displayed to users.
