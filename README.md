@@ -131,20 +131,22 @@ pip install faiss-gpu>=1.7.4
 
 ### API Key Setup
 
-**Method 1: Environment Variable (Recommended)**
+**Method 1: API Keys File (Recommended)**
+```bash
+# Copy the template file
+cp secrets/.env.template secrets/API-Keys.env
+
+# Edit the file and add your actual API key
+# secrets/API-Keys.env:
+OPENAI_API_KEY=sk-your-api-key-here
+```
+
+**Method 2: Environment Variable**
 ```bash
 export OPENAI_API_KEY="sk-your-api-key-here"
 ```
 
-**Method 2: Configuration File**
-Edit `config.json`:
-```json
-{
-  "api_keys": {
-    "openai": "sk-your-api-key-here"
-  }
-}
-```
+**Security Note**: API keys are now stored in `secrets/API-Keys.env` (gitignored) instead of `config.json` for better security.
 
 ### Configuration Options
 

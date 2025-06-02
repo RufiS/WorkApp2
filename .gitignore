@@ -29,6 +29,10 @@ data/
 # MacOS
 .DS_Store
 
+# Secrets and API keys
+secrets/API-Keys.env
+*.env
+
 # Project-specific (optional—exclude if unnecessary)
 *.npy
 *.code-workspace

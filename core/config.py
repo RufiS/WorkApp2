@@ -8,6 +8,14 @@ import threading
 from dataclasses import dataclass, field, asdict
 from typing import Dict, Any, List, Optional, Union
 
+# Load environment variables from .env files
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    # Fallback if python-dotenv is not installed
+    def load_dotenv(*args, **kwargs):
+        pass
+
 # Setup logging
 logger = logging.getLogger(__name__)
 
@@ -212,7 +220,45 @@ class ConfigManager:
                 )
                 logger.warning(f"Using default performance configuration values due to error")
 
+        # Load API keys from environment variables
+        self._load_api_keys(app_config)
+
         return app_config
+
+    def _load_api_keys(self, app_config: AppConfig) -> None:
+        """
+        Load API keys from .env file and environment variables
+        
+        Args:
+            app_config: AppConfig instance to populate with API keys
+        """
+        # Load API keys file from secrets/ directory
+        env_path = os.path.join("secrets", "API-Keys.env")
+        if os.path.exists(env_path):
+            load_dotenv(env_path)
+            logger.info(f"Loaded environment variables from {env_path}")
+        else:
+            logger.info(f"No API-Keys.env file found at {env_path}, using system environment variables")
+        
+        # Load API keys from environment variables
+        api_keys = {}
+        
+        # OpenAI API key
+        openai_key = os.getenv('OPENAI_API_KEY')
+        if openai_key:
+            api_keys['openai'] = openai_key
+            logger.info("Loaded OpenAI API key from environment")
+        
+        # Add other API keys as needed in the future
+        # anthropic_key = os.getenv('ANTHROPIC_API_KEY')
+        # if anthropic_key:
+        #     api_keys['anthropic'] = anthropic_key
+        
+        # Update the app config
+        app_config.api_keys = api_keys
+        
+        if not api_keys:
+            logger.warning("No API keys found in environment variables. Please check your .env file.")
 
     def save_config(self) -> None:
         """
@@ -226,6 +272,9 @@ class ConfigManager:
 
                 # Remove performance config (saved separately)
                 performance_dict = config_dict.pop("performance")
+                
+                # Remove api_keys (stored in .env file)
+                config_dict.pop("api_keys", None)
 
                 # Save main config
                 with open(self.config_path, "w") as f:

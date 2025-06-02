@@ -36,9 +36,7 @@
   "data_dir": "./data",
   "log_level": "INFO",
   "error_log_path": "./logs/workapp_errors.log",
-  "api_keys": {
-    "openai": "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"
-  },
+
   "page_title": "Document QA",
   "version": "0.4.0",
   "debug_default": false,
