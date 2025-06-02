@@ -74,7 +74,7 @@ class PromptGenerator:
                 try:
                     from utils.config import resolve_path
 
-                    fallback_log_path = resolve_path("./logs/workapp_errors.log", create_dir=True)
+                    fallback_log_path = resolve_path(os.path.join(".", "logs", "workapp_errors.log"), create_dir=True)
                 except ImportError:
                     fallback_log_path = "./logs/workapp_errors.log"
                     os.makedirs(os.path.dirname(fallback_log_path), exist_ok=True)

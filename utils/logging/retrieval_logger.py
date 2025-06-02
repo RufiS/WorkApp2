@@ -21,12 +21,14 @@ logger = logging.getLogger(__name__)
 class RetrievalLogger:
     """Enhanced logger for retrieval system operations."""
 
-    def __init__(self, metrics_log_path: str = "logs/query_metrics.log"):
+    def __init__(self, metrics_log_path: str = None):
         """Initialize the retrieval logger.
 
         Args:
             metrics_log_path: Path to the metrics log file
         """
+        if metrics_log_path is None:
+            metrics_log_path = os.path.join("logs", "query_metrics.log")
         self.metrics_log_path = metrics_log_path
 
         # Ensure log directory exists
@@ -206,7 +208,7 @@ class RetrievalLogger:
             logger.error(f"Failed to write to metrics log: {e}")
             # Try to create backup
             try:
-                backup_path = f"logs/metrics_backup_{int(time.time())}.log"
+                backup_path = os.path.join("logs", f"metrics_backup_{int(time.time())}.log")
                 with open(backup_path, "w") as f:
                     f.write(json.dumps(log_entry, indent=2) + "\n")
                 logger.info(f"Metrics saved to backup: {backup_path}")

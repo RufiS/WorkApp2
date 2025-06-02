@@ -20,8 +20,12 @@ from utils.ui import (  # type: ignore[import] # TODO: Add proper UI types
     QueryProgressTracker,
     display_enhanced_answer,
     display_error_message,
+    render_feedback_widget,
+    create_feedback_callback,
+    render_feedback_summary_card,
 )
 from utils.error_handling.enhanced_decorators import with_advanced_retry, with_error_tracking  # type: ignore[import] # TODO: Add proper types
+from utils.feedback import FeedbackService  # type: ignore[import] # TODO: Add proper types
 
 
 logger = logging.getLogger(__name__)
@@ -40,6 +44,9 @@ class QueryController:
         self.app_orchestrator = app_orchestrator
         self.production_mode = production_mode
         self.logger = logger
+        
+        # Initialize feedback service
+        self.feedback_service = FeedbackService()
 
     @with_advanced_retry(max_attempts=2, backoff_factor=1.5)
     @with_error_tracking()
@@ -221,6 +228,17 @@ class QueryController:
             query: The user's question
             debug_mode: Whether to show debug information
         """
+        # Always try to restore cached answer first, but allow new queries to override
+        if self._try_restore_any_cached_answer(debug_mode, query):
+            return
+            
+        # If no cache restored and no query provided, nothing to do
+        if not query or query.strip() == "":
+            return
+            
+        # Store the current query in session state for persistence
+        st.session_state["current_query"] = query
+            
         if not self.app_orchestrator:
             st.error("Application orchestrator not available")
             return
@@ -316,8 +334,14 @@ class QueryController:
                 # Log successful query
                 self.logger.info(f"Successfully processed query: {query[:50]}...")
 
+                # Cache the answer data for persistence
+                self._cache_answer_data(query, formatted_answer, results, debug_mode)
+                
                 # Display debug information if enabled
                 self._display_debug_info(debug_mode, results, query, formatted_answer)
+                
+                # Display feedback widget
+                self._display_feedback_widget(query, results, formatted_answer)
 
             else:
                 display_error_message(
@@ -399,6 +423,304 @@ class QueryController:
             return "Please enter a more detailed question (at least 3 characters)"
 
         return None
+
+    def _display_feedback_widget(
+        self,
+        query: str,
+        results: Dict[str, Any],
+        formatted_answer: str
+    ) -> None:
+        """Display the feedback widget for user feedback collection.
+        
+        Args:
+            query: Original user question
+            results: Query processing results
+            formatted_answer: Final formatted answer
+        """
+        try:
+            # Extract context from results
+            context = results.get("retrieval", {}).get("context", "")
+            
+            # Get configuration snapshot
+            config_snapshot = self._get_config_snapshot()
+            
+            # Create session context
+            session_context = self._get_session_context()
+            
+            # Model configuration
+            model_config = {
+                "extraction_model": "gpt-4o-mini",  # TODO: Get from actual config
+                "formatting_model": "gpt-4o-mini",  # TODO: Get from actual config
+                "embedding_model": "intfloat/e5-base-v2",  # TODO: Get from actual config
+                "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2"  # TODO: Get from actual config
+            }
+            
+            # Create feedback callback
+            feedback_callback = create_feedback_callback(
+                feedback_service=self.feedback_service,
+                question=query,
+                context=context,
+                answer=formatted_answer,
+                query_results=results,
+                config_snapshot=config_snapshot,
+                session_context=session_context,
+                model_config=model_config
+            )
+            
+            # Display the feedback widget
+            render_feedback_widget(
+                question=query,
+                context=context,
+                answer=formatted_answer,
+                query_results=results,
+                on_feedback_submit=feedback_callback,
+                production_mode=self.production_mode
+            )
+            
+            # Show feedback summary in development mode
+            if not self.production_mode:
+                recent_summary = self.feedback_service.get_recent_feedback_summary(limit=10)
+                render_feedback_summary_card(recent_summary, self.production_mode)
+                
+        except Exception as e:
+            self.logger.error(f"Failed to display feedback widget: {str(e)}", exc_info=True)
+            # Don't show error to user, just log it
+    
+    def _get_config_snapshot(self) -> Dict[str, Any]:
+        """Get current configuration snapshot for feedback logging.
+        
+        Returns:
+            Dictionary with current configuration state
+        """
+        try:
+            # TODO: Get actual configuration from the app_orchestrator
+            # For now, return default values
+            return {
+                "search_engine": "reranking",  # TODO: Get from actual config
+                "similarity_threshold": 0.25,  # TODO: Get from actual config
+                "top_k": 15,  # TODO: Get from actual config
+                "enhanced_mode": False,  # TODO: Get from actual config
+                "enable_reranking": True,  # TODO: Get from actual config
+                "vector_weight": 0.9  # TODO: Get from actual config
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get config snapshot: {str(e)}")
+            return {}
+    
+    def _get_session_context(self) -> Dict[str, Any]:
+        """Get current session context for feedback logging.
+        
+        Returns:
+            Dictionary with session information
+        """
+        try:
+            # Get or create session ID
+            if "session_id" not in st.session_state:
+                import uuid
+                st.session_state["session_id"] = str(uuid.uuid4())[:8]
+            
+            # Track query sequence
+            if "query_count" not in st.session_state:
+                st.session_state["query_count"] = 0
+            st.session_state["query_count"] += 1
+            
+            # Calculate time since last query
+            current_time = time.time()
+            time_since_last = None
+            if "last_query_time" in st.session_state:
+                time_since_last = current_time - st.session_state["last_query_time"]
+            st.session_state["last_query_time"] = current_time
+            
+            return {
+                "session_id": st.session_state["session_id"],
+                "production_mode": self.production_mode,
+                "query_sequence": st.session_state["query_count"],
+                "time_since_last_query": time_since_last
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get session context: {str(e)}")
+            return {
+                "session_id": "unknown",
+                "production_mode": self.production_mode,
+                "query_sequence": 1
+            }
+
+    def _try_restore_any_cached_answer(self, debug_mode: bool, current_query: str = "") -> bool:
+        """Try to restore cached answer, but only if appropriate.
+        
+        This method restores cached answers during feedback interactions but
+        allows new queries to be processed normally.
+        
+        Args:
+            debug_mode: Whether debug mode is enabled
+            current_query: The current query being processed
+            
+        Returns:
+            True if a cached answer was restored, False otherwise
+        """
+        try:
+            # Check if we have any cached answer data
+            if "cached_answer" not in st.session_state:
+                return False
+                
+            cached_data = st.session_state["cached_answer"]
+            
+            # Check if cache has the required data and is still valid
+            if (
+                "formatted_answer" in cached_data and
+                "results" in cached_data and
+                "query" in cached_data
+            ):
+                # Check if cache is not too old (within 10 minutes)
+                cache_time = cached_data.get("timestamp", 0)
+                current_time = time.time()
+                
+                if current_time - cache_time < 600:  # 10 minutes
+                    cached_query = cached_data.get("query", "")
+                    
+                    # Only restore if:
+                    # 1. No current query (feedback interaction), OR
+                    # 2. Current query matches cached query (same question)
+                    if not current_query or current_query == cached_query:
+                        self._restore_cached_answer(debug_mode)
+                        return True
+                    else:
+                        # New different query - clear old cache to make room for new answer
+                        self.logger.info(f"New query detected, clearing old cache. Old: '{cached_query[:50]}...', New: '{current_query[:50]}...'")
+                        del st.session_state["cached_answer"]
+                        return False
+                    
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Error trying to restore cached answer: {str(e)}")
+            return False
+    
+    def _should_restore_cached_answer(self, query: str) -> bool:
+        """Check if we should restore a cached answer instead of processing a new query.
+        
+        Args:
+            query: Current query string
+            
+        Returns:
+            True if we should restore cached answer, False if we should process new query
+        """
+        try:
+            # Check if we have cached answer data
+            if "cached_answer" not in st.session_state:
+                return False
+                
+            cached_data = st.session_state["cached_answer"]
+            
+            # Check if the query matches and cache is still valid
+            if (
+                cached_data.get("query") == query and
+                "formatted_answer" in cached_data and
+                "results" in cached_data
+            ):
+                # Check if cache is not too old (within 5 minutes)
+                cache_time = cached_data.get("timestamp", 0)
+                current_time = time.time()
+                if current_time - cache_time < 300:  # 5 minutes
+                    return True
+                    
+            return False
+            
+        except Exception as e:
+            self.logger.error(f"Error checking cached answer: {str(e)}")
+            return False
+    
+    def _cache_answer_data(
+        self,
+        query: str,
+        formatted_answer: str,
+        results: Dict[str, Any],
+        debug_mode: bool
+    ) -> None:
+        """Cache answer data in session state for persistence.
+        
+        Args:
+            query: Original user question
+            formatted_answer: Final formatted answer
+            results: Query processing results
+            debug_mode: Whether debug mode is enabled
+        """
+        try:
+            st.session_state["cached_answer"] = {
+                "query": query,
+                "formatted_answer": formatted_answer,
+                "results": results,
+                "debug_mode": debug_mode,
+                "timestamp": time.time()
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error caching answer data: {str(e)}")
+    
+    def _restore_cached_answer(self, debug_mode: bool) -> None:
+        """Restore and display a cached answer.
+        
+        Args:
+            debug_mode: Whether debug mode is enabled
+        """
+        try:
+            cached_data = st.session_state.get("cached_answer", {})
+            
+            if not cached_data:
+                return
+                
+            query = cached_data.get("query", "")
+            formatted_answer = cached_data.get("formatted_answer", "")
+            results = cached_data.get("results", {})
+            cached_debug_mode = cached_data.get("debug_mode", False)
+            
+            # Display the cached answer
+            if formatted_answer:
+                display_enhanced_answer(formatted_answer)
+                
+                # Display retrieval metrics if available
+                if (
+                    "retrieval" in results
+                    and "scores" in results["retrieval"]
+                    and results["retrieval"]["scores"]
+                ):
+                    scores = results["retrieval"]["scores"]
+                    if scores:
+                        avg_score = sum(scores) / len(scores) if scores else 0
+                        max_score = max(scores) if scores else 0
+                        # Display a small progress bar showing the max retrieval score
+                        st.caption("Retrieval Quality")
+                        st.progress(min(1.0, max_score))
+                        st.caption(f"Max score: {max_score:.4f}, Avg score: {avg_score:.4f}")
+                
+                # Display raw context if enabled
+                if (
+                    st.session_state.get("show_raw_context", False)
+                    and "retrieval" in results
+                    and "context" in results["retrieval"]
+                ):
+                    with st.expander("Raw Context"):
+                        st.text_area("Retrieved Context", results["retrieval"]["context"], height=300)
+                        # Display retrieval scores if available
+                        if "scores" in results["retrieval"] and results["retrieval"]["scores"]:
+                            scores = results["retrieval"]["scores"]
+                            avg_score = sum(scores) / len(scores) if scores else 0
+                            max_score = max(scores) if scores else 0
+                            st.write(
+                                f"Retrieval metrics: Avg score: {avg_score:.4f}, Max score: {max_score:.4f}"
+                            )
+                
+                # Display debug information if enabled (use current debug_mode, not cached)
+                self._display_debug_info(debug_mode, results, query, formatted_answer)
+                
+                # Display feedback widget
+                self._display_feedback_widget(query, results, formatted_answer)
+                
+        except Exception as e:
+            self.logger.error(f"Error restoring cached answer: {str(e)}")
+            # Clear corrupted cache
+            if "cached_answer" in st.session_state:
+                del st.session_state["cached_answer"]
 
     def get_query_suggestions(self) -> list[str]:
         """Get suggested queries for the user.

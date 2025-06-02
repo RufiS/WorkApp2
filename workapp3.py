@@ -150,6 +150,12 @@ def main() -> None:
     if not production_mode:
         testing_controller.render_testing_section()
 
+    # Always try to restore cached answers first (handles feedback interactions)
+    if not ask_button_pressed:
+        # Check for cached answers to restore after feedback interactions
+        # Pass empty query to allow cache restoration for feedback interactions
+        query_controller.process_query("", debug_mode=debug_mode)
+    
     # Process query if submitted
     if ask_button_pressed:
         # Validate query inputs

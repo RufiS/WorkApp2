@@ -255,7 +255,7 @@ class VectorEngine:
             # Fallback to simple file logging if error_logging module is not available
             try:
                 from core.config import resolve_path  # type: ignore[import] # TODO: Add proper config types
-                fallback_log_path = resolve_path("./logs/workapp_errors.log", create_dir=True)
+                fallback_log_path = resolve_path(os.path.join(".", "logs", "workapp_errors.log"), create_dir=True)
             except ImportError:
                 fallback_log_path = "./logs/workapp_errors.log"
                 os.makedirs(os.path.dirname(fallback_log_path), exist_ok=True)

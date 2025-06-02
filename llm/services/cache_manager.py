@@ -138,7 +138,7 @@ class CacheManager:
                             from utils.config import resolve_path
 
                             fallback_log_path = resolve_path(
-                                "./logs/workapp_errors.log", create_dir=True
+                                os.path.join(".", "logs", "workapp_errors.log"), create_dir=True
                             )
                         except ImportError:
                             fallback_log_path = "./logs/workapp_errors.log"

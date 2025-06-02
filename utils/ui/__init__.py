@@ -21,6 +21,14 @@ from utils.ui.enhanced_components import (
     create_collapsible_section,
 )
 
+from utils.ui.feedback_components import (
+    render_feedback_widget,
+    render_feedback_analytics_widget,
+    render_feedback_summary_card,
+    create_feedback_callback,
+    clear_feedback_state,
+)
+
 from utils.ui.text_processing import (
     smart_wrap,
     extract_confidence_score,
@@ -54,6 +62,12 @@ __all__ = [
     "display_error_message",
     "display_system_status",
     "create_collapsible_section",
+    # Feedback components
+    "render_feedback_widget",
+    "render_feedback_analytics_widget",
+    "render_feedback_summary_card",
+    "create_feedback_callback",
+    "clear_feedback_state",
     # Text processing
     "smart_wrap",
     "extract_confidence_score",
