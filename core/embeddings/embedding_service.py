@@ -146,6 +146,17 @@ class EmbeddingService:
 
         return result
 
+    def embed_documents(self, texts: Union[List[str], Sequence[Union[Dict[str, Any], str]]]) -> np.ndarray:
+        """Alias for embed_texts to maintain compatibility with model preloader.
+        
+        Args:
+            texts: List of texts to embed
+            
+        Returns:
+            NumPy array of embeddings
+        """
+        return self.embed_texts(texts)
+    
     def embed_query(self, query: str) -> np.ndarray:
         """
         Embed a single query string

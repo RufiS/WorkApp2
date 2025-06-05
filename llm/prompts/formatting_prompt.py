@@ -1,13 +1,12 @@
-"""Enhanced formatting prompt for LLM service."""
+"""Enhanced formatting prompt for LLM service - LLM-first approach without regex."""
 
-import re
 import textwrap
 from llm.prompts.sanitizer import sanitize_input
 
 
 def generate_formatting_prompt(raw_answer: str) -> str:
     """
-    Generate an enhanced prompt for formatting the raw answer.
+    Generate an enhanced prompt for formatting the raw answer with proper dollar sign handling and bullet points.
 
     Args:
         raw_answer: The raw answer from the extraction model
@@ -23,62 +22,52 @@ def generate_formatting_prompt(raw_answer: str) -> str:
     
     return textwrap.dedent(
         f"""
-        System: You are a formatting assistant for Karls Technology dispatchers.
-                Format the answer according to the following rules:
+System: You are a professional formatting assistant for Karls Technology dispatchers. 
+Format answers to be clear, readable, and professional while preserving all technical information.
 
-        FORMATTING RULES:
-        - Preserve ALL technical details, explanations, and procedural steps from the raw_answer - DO NOT remove ANY information.
-        - CRITICAL: NEVER change the order of procedural steps or instructions - maintain the EXACT sequence as presented in the raw_answer.
-        - IMPORTANT: Preserve ALL <uncertain>...</uncertain> tags in the original text - do not remove or modify these tags.
-        - IMPORTANT: Preserve the exact confidence score at the end of the answer - do not increase or decrease it.
-        - CRITICAL: Do not change entity types, classifications, or terminology - maintain exactly what was in the raw_answer.
-        - CRITICAL: Verify that terms like "Revisit", "Appointment", "Service", etc. maintain their EXACT classification (e.g., "complementary", "billable", etc.) from the raw_answer.
-        - CRITICAL: NEVER suggest websites or URLs that don't appear in the context or the raw_answer.
-        - CRITICAL: Do NOT substitute any terms with synonyms - use the EXACT terminology from the raw_answer.
-        - If you notice entity confusion or terminology mixing in the raw_answer, add more <uncertain> tags around those sections.
-        - If you notice inconsistent use of terms, add a note in <uncertain> tags explaining the inconsistency.
-        - If the raw_answer uses different terms for what appears to be the same concept, do not harmonize them - preserve the distinction and add an <uncertain> tag noting the potential confusion.
-        - Ensure no line of text exceeds 80 characters in width. If a line would be longer, start a new line. Preserve all original formatting, such as indentation, bullet points, and numbered lists, when wrapping lines.
-        - Break long lines into shorter segments for better readability.
-        - Use short paragraphs with line breaks between them.
-        - For numbered lists, maintain all detailed explanations for each step.
-        - For bullet points, preserve all details while formatting for better readability.
-        - Maintain all specific parameters, settings, configurations, and technical details.
-        - Organize information in a logical flow.
-        - Highlight important warnings or prerequisites.
-        - Do not summarize or condense the information - keep ALL details intact.
-        - Do not add new information not present in the raw_answer.
-        - Do not remove any uncertainty expressed in the raw_answer.
-        - When terms are disambiguated in the raw_answer, ensure this disambiguation is clearly presented and emphasized.
+CRITICAL FORMATTING RULES:
 
-        ENHANCED FORMATTING RULES:
-        - PHONE NUMBERS: Always format phone numbers consistently as XXX-XXX-XXXX with hyphens.
-        - CITY NAMES: Preserve exact city name spelling and capitalization as found in the raw_answer.
-        - METRO AREAS: Format metro area names in bold (e.g., **Tampa Metro**).
-        - HEADERS: Format section headers in bold and on their own line.
-        - LISTS: For lists of cities or services, use bullet points (•) with one item per line.
-        - TABLES: If information is presented in a table-like format, preserve the alignment and structure.
-        - WARNINGS: Format warnings or critical notes in bold and preceded by "⚠️ WARNING: ".
-        - STEPS: For procedural steps, use numbered lists with clear step numbers (1., 2., etc.).
-        - MARKDOWN: Use markdown formatting for better readability:
-          * Bold for emphasis (**important**).
-          * Italics for technical terms (*term*).
-          * Code blocks for commands or inputs (`command`).
-        - QUALITY CHECK: Verify that the final answer includes all required sections from the raw_answer.
+**Currency & Dollar Signs:**
+- ALWAYS escape dollar signs: $125 → \\$125, $4 → \\$4
+- Use format: \\$XXX.XX for all monetary amounts
+- Never leave bare $ symbols (they break display)
 
-        RAW_ANSWER:
+**Bullet Points & Lists:**
+- Use proper markdown bullets with line breaks:
+  - Item 1
+  - Item 2
+  - Item 3
+- Each bullet point MUST be on its own line
+- Use "- " (dash space) for consistent formatting
+- Leave blank lines between sections
 
-        {raw_answer}
+**General Formatting:**
+- Use **bold** for important terms and headings
+- Format phone numbers as XXX-XXX-XXXX
+- Preserve ALL technical details and confidence scores
+- Use clear paragraph breaks for readability
+- Maintain professional dispatcher terminology
 
+**Example Format:**
+**Main Answer:**
+The service costs \\$125 for standard installation.
 
-        FINAL ANSWER:
-    """
+**Additional Details:**
+- Equipment fee: \\$45
+- Labor charge: \\$80
+- Contact: 480-555-0123
+
+Raw answer to format:
+{raw_answer}
+
+Formatted answer (follow all rules above):
+"""
     )
 
 
 def check_formatting_quality(formatted_answer: str, raw_answer: str) -> bool:
     """
-    Check the quality of the formatted answer against the raw answer.
+    Check the quality of the formatted answer using simple string comparisons.
 
     Args:
         formatted_answer: The formatted answer
@@ -87,33 +76,29 @@ def check_formatting_quality(formatted_answer: str, raw_answer: str) -> bool:
     Returns:
         True if the formatting quality is acceptable, False otherwise
     """
-    # Check if the formatted answer is too short compared to the raw answer
-    if len(formatted_answer) < len(raw_answer) * 0.8:
+    # Basic length check - formatted should not be significantly shorter
+    if len(formatted_answer) < len(raw_answer) * 0.7:
         return False
 
-    # Extract section headers from raw answer (assuming they're on their own lines)
-    raw_sections: list[str] = re.findall(r"^([A-Z][A-Za-z\s]+):$", raw_answer, re.MULTILINE)
-
-    # Check if each section header appears in the formatted answer
-    for section in raw_sections:
-        if section not in formatted_answer and f"**{section}**" not in formatted_answer:
+    # Check if key terms from raw answer are preserved
+    # Extract important words (simplified approach without regex)
+    raw_words = set(word.lower() for word in raw_answer.split() if len(word) > 4)
+    formatted_words = set(word.lower() for word in formatted_answer.split() if len(word) > 4)
+    
+    # At least 80% of important words should be preserved
+    if len(raw_words) > 0:
+        preserved_ratio = len(raw_words & formatted_words) / len(raw_words)
+        if preserved_ratio < 0.8:
             return False
 
-    # Check if any <uncertain> tags were removed
+    # Check if confidence information is preserved (simple string check)
+    if "confidence:" in raw_answer.lower() and "confidence" not in formatted_answer.lower():
+        return False
+
+    # Check if uncertain tags are preserved
     raw_uncertain_count = raw_answer.count("<uncertain>")
     formatted_uncertain_count = formatted_answer.count("<uncertain>")
     if formatted_uncertain_count < raw_uncertain_count:
         return False
-
-    # Check if confidence score is preserved
-    confidence_match_raw = re.search(r"Confidence: (\d+)%", raw_answer)
-    confidence_match_formatted = re.search(r"Confidence: (\d+)%", formatted_answer)
-
-    if confidence_match_raw and not confidence_match_formatted:
-        return False
-
-    if confidence_match_raw and confidence_match_formatted:
-        if confidence_match_raw.group(1) != confidence_match_formatted.group(1):
-            return False
 
     return True

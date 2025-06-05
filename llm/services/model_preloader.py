@@ -213,30 +213,43 @@ class ModelPreloader:
             }
     
     async def _preload_embeddings(self) -> None:
-        """Preload embedding model with warmup texts"""
+        """Preload embedding model and vector infrastructure with warmup texts"""
         start_time = time.time()
         
         try:
-            logger.info("🔥 Preloading embedding model...")
+            logger.info("🔥 Preloading embedding model and vector infrastructure...")
             
             # Use embedding service to generate embeddings for warmup texts
             warmup_texts = self.config.embedding_warmup_texts
             
-            # Create embeddings for warmup (this loads the model)
+            # Create embeddings for warmup (this loads the model into GPU)
             if hasattr(self.embedding_service, 'embed_documents'):
-                await asyncio.wait_for(
-                    self.embedding_service.embed_documents(warmup_texts),
+                # Use executor since embed_documents is synchronous
+                loop = asyncio.get_event_loop()
+                embeddings = await asyncio.wait_for(
+                    loop.run_in_executor(
+                        None, 
+                        self.embedding_service.embed_documents,
+                        warmup_texts
+                    ),
                     timeout=self.config.embedding_preload_timeout_seconds
                 )
+                logger.info(f"🔥 Generated warmup embeddings: shape {embeddings.shape}")
             else:
-                # Fallback if async method not available
-                import asyncio
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(
-                    None, 
-                    self.embedding_service.embed_documents,
-                    warmup_texts
-                )
+                raise Exception("Embedding service does not have embed_documents method")
+            
+            # Additional warm-up for vector infrastructure
+            if hasattr(self.embedding_service, 'model'):
+                # Force model to GPU if available
+                try:
+                    model = getattr(self.embedding_service, 'model', None)
+                    if model and hasattr(model, 'to') and hasattr(model, 'device'):
+                        import torch
+                        if torch.cuda.is_available():
+                            logger.info("🚀 Moving embedding model to GPU for optimal performance")
+                            model.to('cuda')
+                except Exception as gpu_e:
+                    logger.debug(f"GPU optimization note: {gpu_e}")
             
             preload_time = time.time() - start_time
             self.preload_results["embedding_preload"] = {
@@ -244,7 +257,7 @@ class ModelPreloader:
                 "time_seconds": round(preload_time, 2),
                 "texts_processed": len(warmup_texts)
             }
-            logger.info(f"✅ Embedding model preloaded in {preload_time:.1f}s")
+            logger.info(f"✅ Embedding model and infrastructure preloaded in {preload_time:.1f}s")
             
         except Exception as e:
             preload_time = time.time() - start_time

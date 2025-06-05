@@ -33,4 +33,8 @@ aiohttp>=3.8.5
 
 # Optional GPU support
 # Uncomment if GPU is available
-faiss-gpu>=1.7.4
+# faiss-gpu>=1.7.4
+
+# SPLADE support (REQUIRED for systematic testing)
+transformers>=4.35.0
+requests>=2.31.0

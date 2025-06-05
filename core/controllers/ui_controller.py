@@ -80,8 +80,11 @@ class UIController:
             
         col1, col2 = st.columns([3, 1])
         with col1:
+            # Check for SPLADE mode first
+            if hasattr(st.session_state, 'use_splade') and st.session_state.get('use_splade', False):
+                st.info("🧪 **Active Search Method:** SPLADE (Experimental Sparse+Dense Hybrid)")
             # Determine and display current search method
-            if performance_config.enable_reranking:
+            elif performance_config.enable_reranking:
                 st.info("🔄 **Active Search Method:** Reranking (Enhanced quality)")
             elif retrieval_config.enhanced_mode:
                 weight_info = f"(Vector: {retrieval_config.vector_weight:.1f}, Keyword: {1-retrieval_config.vector_weight:.1f})"

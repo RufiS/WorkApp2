@@ -12,13 +12,14 @@ from core.config import (
 from utils.ui import display_debug_info_for_index
 
 
-def render_config_sidebar(args, doc_processor) -> bool:
+def render_config_sidebar(args, doc_processor, orchestrator=None) -> bool:
     """
     Render the configuration sidebar and return debug mode status
 
     Args:
         args: Command line arguments
         doc_processor: Document processor instance
+        orchestrator: App orchestrator instance (optional)
 
     Returns:
         bool: Debug mode status
@@ -311,6 +312,30 @@ def render_config_sidebar(args, doc_processor) -> bool:
                 or show_raw_context != st.session_state.get("show_raw_context", False)
             ):
                 st.session_state["show_raw_context"] = show_raw_context
+
+        # Experimental Features section
+        st.subheader("🧪 Experimental Features")
+        
+        # SPLADE toggle (only in development mode)
+        if orchestrator is not None:
+            current_splade_state = orchestrator.is_splade_mode_enabled()
+            splade_enabled = st.checkbox(
+                "Enable SPLADE Retrieval",
+                value=current_splade_state,
+                help="🧪 Experimental sparse+dense hybrid retrieval engine for improved information synthesis"
+            )
+            
+            # If SPLADE state changed, update the orchestrator
+            if splade_enabled != current_splade_state:
+                orchestrator.set_splade_mode(splade_enabled)
+                if splade_enabled:
+                    st.success("🧪 SPLADE mode enabled! Enhanced retrieval active.")
+                else:
+                    st.info("🔄 SPLADE mode disabled. Using standard retrieval.")
+                st.rerun()
+                
+            if splade_enabled:
+                st.info("🧪 SPLADE combines dense vector search with sparse keyword matching for better retrieval of scattered information.")
 
         # Debug mode toggle
         st.subheader("Debug Options")

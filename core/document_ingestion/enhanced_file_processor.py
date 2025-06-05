@@ -313,19 +313,22 @@ class EnhancedFileProcessor:
                 log_error(error_msg, include_traceback=False)
                 raise ValueError(error_msg)
 
+            # Get the original filename
+            original_filename = getattr(file, 'name', 'unknown')
+
             # Create a temporary file to save the uploaded file
             with tempfile.NamedTemporaryFile(
-                delete=False, suffix=os.path.splitext(file.name)[1]
+                delete=False, suffix=os.path.splitext(original_filename)[1]
             ) as temp_file:
                 temp_file.write(file.getvalue())
                 temp_file_path = temp_file.name
 
-            # Process the temporary file
-            chunks = self.load_and_chunk_document(temp_file_path)
+            # Process the temporary file with the original filename
+            chunks = self.load_and_chunk_document(temp_file_path, original_filename=original_filename)
 
             # Check if chunks are empty and log it
             if not chunks:
-                error_msg = f"No content extracted from file {file.name}. File may be empty, corrupted, or in an unsupported format."
+                error_msg = f"No content extracted from file {original_filename}. File may be empty, corrupted, or in an unsupported format."
                 logger.warning(error_msg)
                 log_warning(error_msg, include_traceback=False)
 
@@ -347,18 +350,22 @@ class EnhancedFileProcessor:
 
     @with_timing(threshold=1.0)
     @with_error_context("document loading and chunking")
-    def load_and_chunk_document(self, file_path: str) -> List[Dict[str, Any]]:
+    def load_and_chunk_document(self, file_path: str, original_filename: Optional[str] = None) -> List[Dict[str, Any]]:
         """
         Load a document and split it into chunks with enhanced processing
 
         Args:
             file_path: Path to the document file
+            original_filename: Original filename to use in metadata (if different from file_path)
 
         Returns:
             List of document chunks with metadata
         """
         # Validate file
         self._validate_file(file_path)
+
+        # Use original filename if provided, otherwise use the base name of file_path
+        display_filename = original_filename if original_filename else os.path.basename(file_path)
 
         try:
             # Get appropriate loader
@@ -369,7 +376,7 @@ class EnhancedFileProcessor:
 
             # Check if documents were loaded
             if not documents:
-                warning_msg = f"No content loaded from {os.path.basename(file_path)}"
+                warning_msg = f"No content loaded from {display_filename}"
                 logger.warning(warning_msg)
                 log_warning(warning_msg)
                 return []
@@ -382,23 +389,23 @@ class EnhancedFileProcessor:
 
             # Log chunking parameters
             logger.info(
-                f"Enhanced chunking for {os.path.basename(file_path)} with size={self.chunk_size}, overlap={self.chunk_overlap}"
+                f"Enhanced chunking for {display_filename} with size={self.chunk_size}, overlap={self.chunk_overlap}"
             )
 
             # Split documents into chunks
             chunks = self._split_documents_enhanced(text_splitter, enhanced_documents, file_path)
 
-            # Format chunks with metadata
-            formatted_chunks = self._format_chunks_enhanced(chunks, file_path)
+            # Format chunks with metadata using the original filename
+            formatted_chunks = self._format_chunks_enhanced(chunks, file_path, display_filename)
 
             # Validate chunk quality
             self._validate_chunk_quality(formatted_chunks, file_path)
 
-            logger.info(f"Enhanced processing complete for {file_path}: {len(formatted_chunks)} chunks")
+            logger.info(f"Enhanced processing complete for {display_filename}: {len(formatted_chunks)} chunks")
             return formatted_chunks
 
         except Exception as e:
-            error_msg = f"Error in enhanced processing for {file_path}: {str(e)}"
+            error_msg = f"Error in enhanced processing for {display_filename}: {str(e)}"
             logger.error(error_msg, exc_info=True)
             log_error(error_msg)
             raise
@@ -452,8 +459,14 @@ class EnhancedFileProcessor:
             log_error(error_msg)
             raise RuntimeError(f"Failed to chunk document: {str(e)}") from e
 
-    def _format_chunks_enhanced(self, chunks, file_path: str) -> List[Dict[str, Any]]:
-        """Enhanced chunk formatting with quality checks"""
+    def _format_chunks_enhanced(self, chunks, file_path: str, display_filename: str) -> List[Dict[str, Any]]:
+        """Enhanced chunk formatting with quality checks
+        
+        Args:
+            chunks: List of document chunks
+            file_path: Path to the file (may be temporary)
+            display_filename: Filename to display in metadata (original filename)
+        """
         formatted_chunks = []
 
         for i, chunk in enumerate(chunks):
@@ -461,12 +474,13 @@ class EnhancedFileProcessor:
             if not self._is_chunk_valid(chunk.page_content):
                 continue
 
-            # Create enhanced chunk metadata
+            # Create enhanced chunk metadata with original filename
             chunk_data = {
-                "id": f"{os.path.basename(file_path)}-{i}",
+                "id": f"{display_filename}-{i}",
                 "text": chunk.page_content,
                 "metadata": {
-                    "source": file_path,
+                    "source": display_filename,  # Use display filename instead of file path
+                    "source_file": display_filename,  # Additional field for clarity
                     "page": chunk.metadata.get("page", None),
                     "chunk_index": i,
                     "chunk_size": len(chunk.page_content),
@@ -522,8 +536,11 @@ class EnhancedFileProcessor:
         min_size = min(sizes)
         max_size = max(sizes)
 
+        # Get display filename from chunks if available
+        display_filename = chunks[0]["metadata"].get("source", os.path.basename(file_path)) if chunks else os.path.basename(file_path)
+
         # Log quality metrics
-        logger.info(f"Chunk quality analysis for {os.path.basename(file_path)}:")
+        logger.info(f"Chunk quality analysis for {display_filename}:")
         logger.info(f"  - Total chunks: {len(chunks)}")
         logger.info(f"  - Size range: {min_size}-{max_size} chars")
         logger.info(f"  - Average size: {avg_size:.1f} chars")

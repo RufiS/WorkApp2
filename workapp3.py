@@ -37,24 +37,28 @@ def parse_args() -> argparse.Namespace:
     Returns:
         argparse.Namespace: The parsed command line arguments
     """
-    parser = argparse.ArgumentParser(description="WorkApp Document QA System")
+    parser = argparse.ArgumentParser(description="KTI Document QA System")
+    
+    # Dry-run flag
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Preview index changes without writing to disk"
     )
     
-    # Mode selection arguments (mutually exclusive)
-    mode_group = parser.add_mutually_exclusive_group()
-    mode_group.add_argument(
-        "-production",
-        action="store_true",
-        help="Launch in production mode with clean, minimal interface"
+    # Simplified positional arguments
+    parser.add_argument(
+        "mode",
+        nargs="?",
+        choices=["production", "development"],
+        default="development",
+        help="Application mode: 'production' for minimal UI, 'development' for full features (default: development)"
     )
-    mode_group.add_argument(
-        "-development",
-        action="store_true",
-        help="Launch in development mode with full debugging features (default)"
+    
+    parser.add_argument(
+        "features",
+        nargs="*",
+        help="Optional features: 'splade' for experimental sparse+dense hybrid retrieval"
     )
     
     return parser.parse_args()
@@ -65,13 +69,19 @@ def main() -> None:
     # Parse command line arguments
     args = parse_args()
     
-    # Determine application mode
-    production_mode = args.production
-    development_mode = args.development or not args.production  # Default to development if neither specified
+    # Determine application mode from new positional arguments
+    production_mode = args.mode == "production"
+    development_mode = args.mode == "development"
 
     # Initialize the application orchestrator
     orchestrator = AppOrchestrator()
     orchestrator.set_dry_run_mode(args.dry_run)
+    
+    # Set SPLADE mode if specified in features
+    splade_enabled = "splade" in args.features
+    if splade_enabled:
+        orchestrator.set_splade_mode(True)
+        logger.info("🧪 SPLADE mode enabled via positional argument")
 
     # Initialize controllers with mode information
     ui_controller = UIController(orchestrator, production_mode=production_mode)
@@ -92,6 +102,13 @@ def main() -> None:
     try:
         doc_processor, llm_service, retrieval_system = orchestrator.get_services()
         logger.info("Services initialized successfully")
+        
+        # Warm up models for faster response times (only once per session)
+        if "models_warmed_up" not in st.session_state:
+            with st.spinner("🔥 Warming up models for faster responses..."):
+                orchestrator.ensure_models_preloaded()
+                st.session_state["models_warmed_up"] = True
+                logger.info("✅ Models warmed up successfully for this session")
     except Exception as e:
         ui_controller.display_error(
             f"Failed to initialize services: {str(e)}",
@@ -131,7 +148,7 @@ def main() -> None:
         ui_controller.render_search_method_status(performance_config, retrieval_config)
 
         # Render configuration sidebar
-        debug_mode = render_config_sidebar(args, doc_processor)
+        debug_mode = render_config_sidebar(args, doc_processor, orchestrator)
     else:
         # Production mode: Ensure index is loaded silently
         if orchestrator.has_index():

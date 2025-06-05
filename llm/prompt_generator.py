@@ -1,12 +1,11 @@
 """
 LLM prompt generation and optimization
 
-Extracted from llm/llm_service.py
+Extracted from llm/llm_service.py - LLM-first approach without regex
 """
 import logging
 import time
 import os
-import re
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -103,7 +102,7 @@ class PromptGenerator:
 
     def _truncate_context_smartly(self, context: str, max_tokens: int) -> str:
         """
-        Truncate context intelligently without breaking sentences
+        Truncate context intelligently using simple string operations
 
         Args:
             context: The context to truncate
@@ -112,28 +111,39 @@ class PromptGenerator:
         Returns:
             Truncated context string
         """
-        # First, split by sentences
-        sentences = re.split(r"(?<=[.!?]) +", context)
+        # Split by common sentence endings using simple string operations
+        parts = []
+        current = ""
+        
+        for char in context:
+            current += char
+            if char in '.!?' and len(current) > 1:
+                # Check if followed by space or end of string
+                parts.append(current.strip())
+                current = ""
+        
+        # Add any remaining text
+        if current.strip():
+            parts.append(current.strip())
 
-        # Calculate approximate tokens per sentence
-        tokens_per_sentence = [len(s.split()) * 1.3 for s in sentences]
-
-        # Add sentences until we reach the limit
+        # Calculate approximate tokens per part
         truncated_context = []
         current_tokens = 0
 
-        for i, (sentence, tokens) in enumerate(zip(sentences, tokens_per_sentence)):
-            if current_tokens + tokens <= max_tokens:
-                truncated_context.append(sentence)
-                current_tokens += tokens
+        for part in parts:
+            part_tokens = len(part.split()) * 1.3
+            if current_tokens + part_tokens <= max_tokens:
+                truncated_context.append(part)
+                current_tokens += part_tokens
             else:
                 break
 
-        # Join sentences back together
+        # Join parts back together
         result = " ".join(truncated_context)
 
         # Add truncation notice
-        result += "\n\n[Note: Context has been truncated due to length limitations.]"
+        if len(truncated_context) < len(parts):
+            result += "\n\n[Note: Context has been truncated due to length limitations.]"
 
         return result
 
@@ -201,7 +211,7 @@ class PromptGenerator:
 
     def get_context_stats(self, context: str) -> dict:
         """
-        Get statistics about the context
+        Get statistics about the context using simple string operations
 
         Args:
             context: The context to analyze
@@ -210,12 +220,20 @@ class PromptGenerator:
             Dictionary with context statistics
         """
         words = context.split()
-        sentences = re.split(r"[.!?]+", context)
+        
+        # Count sentences using simple character checking
+        sentence_count = 0
+        for char in context:
+            if char in '.!?':
+                sentence_count += 1
+        
+        # Ensure at least 1 sentence for division
+        sentence_count = max(sentence_count, 1)
 
         return {
             "character_count": len(context),
             "word_count": len(words),
-            "sentence_count": len([s for s in sentences if s.strip()]),
+            "sentence_count": sentence_count,
             "estimated_tokens": len(words) * 1.3,
-            "avg_words_per_sentence": len(words) / max(len([s for s in sentences if s.strip()]), 1)
+            "avg_words_per_sentence": len(words) / sentence_count
         }

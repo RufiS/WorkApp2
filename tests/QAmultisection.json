@@ -1,0 +1,82 @@
+[
+  {
+    "question": "A Field Engineer spends 1.5 hours onsite, the client lives outside the normal service range, and the job requires immediate Clean-Room data recovery. What amount is charged on the spot before any additional lab fees?",
+    "answer": "$125 for the first hour + $31.25 for the extra 30 minutes + $4 fuel surcharge + $45 trip fee + the mandatory $250 Clean-Room deposit, totaling $455.25 upfront."
+  },
+  {
+    "question": "A new client books and then cancels the same day. What exact fee do we invoice, and why would an existing client in the same situation NOT be invoiced?",
+    "answer": "We send a Same-Day Cancellation (SDC) invoice for $191.50 ($125 labor, $4 fuel surcharge, $62.50 invoice fee). SDC invoices go only to NEW clients—once a client has paid for any prior visit or fee, they are considered existing, and the SDC is waived."
+  },
+  {
+    "question": "A Pacific-time client has a 12 PM – 3 PM arrival window set by an Arizona-based dispatcher. What local window appears on the client’s calendar, and by what local time must they cancel to avoid the fee?",
+    "answer": "Because Pacific Standard Time runs one hour behind Arizona, the client sees an 11 AM – 2 PM window. They must notify us by 8 PM Pacific the night before to avoid a Same-Day Cancellation charge."
+  },
+  {
+    "question": "Which arrival window is explicitly barred from double-stacking, and why do we impose that restriction?",
+    "answer": "The 8 AM – 10 AM window may never be double-stacked because it is only two hours long; stacking would risk a late arrival and break the promise of a tight early-morning window."
+  },
+  {
+    "question": "What is the Cleveland metro phone number a client should dial for service?",
+    "answer": "216-294-4800."
+  },
+  {
+    "question": "An invoice shows $125 labor, $4 fuel, a $45 trip fee, and a $62.50 invoice fee. How long was the appointment, and why was the invoice fee applied?",
+    "answer": "The visit lasted exactly one hour (trip fees don’t change labor math). The $62.50 invoice fee appears because the client did not or could not pay the Field Engineer at checkout, so an invoice had to be sent."
+  },
+  {
+    "question": "Where do accidentally rescheduled work orders land on the KT3 calendar, and how do you retrieve them?",
+    "answer": "They are automatically placed in the Sunday 7–8 PM slot. Open that time block, locate the work order, and drag it back to the correct date and arrival window."
+  },
+  {
+    "question": "A client waived the antivirus portion of the 4-Point inspection last time. They now want a free follow-up for the same problem. Do they qualify?",
+    "answer": "No. Waiving any of the four checks voids the two-week revisit warranty. The next visit must be booked as a standard billable appointment or escalated for manager approval."
+  },
+  {
+    "question": "What certifications do Karls Technology Field Engineers typically hold?",
+    "answer": "CompTIA A+, various Microsoft credentials, and the proprietary Karls Technology Field Engineer certification signed off by CEO Matt Karls."
+  },
+  {
+    "question": "Outline every step a dispatcher must take when a caller wants to pay an outstanding invoice by phone.",
+    "answer": "1) Gather the client’s name, number, email, and invoice #. 2) Verify or update the email on file. 3) Ping @collections and @managers in the Dispatchers Slack channel with that info. 4) Tell the client someone from the payments team will reach out shortly—never say their invoice is ‘in collections.’"
+  },
+  {
+    "question": "If a Field Engineer calls out for the second time on the same follow-up job, can dispatch assign a different engineer without permission?",
+    "answer": "No. Switching engineers on an in-progress follow-up requires explicit confirmation from Helpdesk or a manager before rescheduling with a different FE."
+  },
+  {
+    "question": "During a booking call, when a client asks if we accept checks, how should you respond and what alternative can you offer for prepaid funds?",
+    "answer": "Politely inform them we do not take checks or cash; however, we can accept prepaid Visa, MasterCard, Discover, or American Express gift cards as valid payment."
+  },
+  {
+    "question": "A data-recovery client wants to know why we can’t guarantee success. Summarize the policy in one sentence.",
+    "answer": "Because until the engineer inspects the drive, we have no way to know its true condition, so recovery success cannot be guaranteed."
+  },
+  {
+    "question": "What is the absolute maximum total drive time an optimized route should create for a Field Engineer in one day, and what tool is used to judge it?",
+    "answer": "Less than two hours, measured by plotting the day’s route in Google Maps with toll roads toggled off."
+  },
+  {
+    "question": "Explain the quick dispatcher response if a caller threatens legal action during a dispute.",
+    "answer": "Apologize, state that due to the threat of legal action you must end the conversation, direct further inquiries to our legal team, and then disconnect."
+  },
+  {
+    "question": "A client booked back-to-back 9-12 and 12-3 windows, but the second site is 45 minutes away. What is the correct scheduling adjustment?",
+    "answer": "Move the second job into the next available 2–5 PM window (or later) because any site over 30 minutes away should not be scheduled immediately after another appointment."
+  },
+  {
+    "question": "When does the Field Engineer’s billable clock start, and how would you relay that fact to a curious client?",
+    "answer": "Billing begins the moment the engineer steps out of the vehicle on-site. Tell the client, “Your time starts when the engineer reaches your location, not when they finish unloading tools.”"
+  },
+  {
+    "question": "Why is it essential not to tick ‘Block Availability’ when creating a calendar reminder for an FE to call a prior client?",
+    "answer": "Blocking availability tricks KT3 into thinking the FE has an extra work order, which can hide real openings and cause scheduling conflicts."
+  },
+  {
+    "question": "Describe the one circumstance where a remote appointment can be booked at no charge.",
+    "answer": "Transferring an existing N-Able subscription from one device to another—if that’s the only task—qualifies for a free remote slot; any additional work makes it a normal billable visit."
+  },
+  {
+    "question": "List every data point required in KT3 when a client finally agrees to schedule a work order.",
+    "answer": "Full name (properly capitalized), best phone number, email, service address, any access notes or gate codes, the referrer (e.g., Google), a concise work-summary line, and a detailed problem description."
+  }
+]

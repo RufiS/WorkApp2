@@ -298,18 +298,23 @@ class QueryController:
                 formatted_answer = results["formatting"]["formatted_answer"]
                 display_enhanced_answer(formatted_answer)
 
-                # Display retrieval metrics if available
-                if (
-                    "retrieval" in results
-                    and "scores" in results["retrieval"]
-                    and results["retrieval"]["scores"]
-                ):
-                    scores = results["retrieval"]["scores"]
-                    if scores:
-                        avg_score = sum(scores) / len(scores) if scores else 0
-                        max_score = max(scores) if scores else 0
-                        # Display a small progress bar showing the max retrieval score
-                        with metrics_placeholder.container():
+                # Display timing and metrics information
+                with metrics_placeholder.container():
+                    # Show timing for both production and development modes
+                    if "total_time" in results:
+                        st.caption(f"⏱️ Ask to Answer: {results['total_time']:.2f} seconds")
+                    
+                    # Display retrieval metrics if available
+                    if (
+                        "retrieval" in results
+                        and "scores" in results["retrieval"]
+                        and results["retrieval"]["scores"]
+                    ):
+                        scores = results["retrieval"]["scores"]
+                        if scores:
+                            avg_score = sum(scores) / len(scores) if scores else 0
+                            max_score = max(scores) if scores else 0
+                            # Display a small progress bar showing the max retrieval score
                             st.caption("Retrieval Quality")
                             st.progress(min(1.0, max_score))
                             st.caption(f"Max score: {max_score:.4f}, Avg score: {avg_score:.4f}")
@@ -447,13 +452,8 @@ class QueryController:
             # Create session context
             session_context = self._get_session_context()
             
-            # Model configuration
-            model_config = {
-                "extraction_model": "gpt-4o-mini",  # TODO: Get from actual config
-                "formatting_model": "gpt-4o-mini",  # TODO: Get from actual config
-                "embedding_model": "intfloat/e5-base-v2",  # TODO: Get from actual config
-                "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2"  # TODO: Get from actual config
-            }
+            # Get actual model configuration from config
+            model_config = self._get_model_config()
             
             # Create feedback callback
             feedback_callback = create_feedback_callback(
@@ -735,3 +735,29 @@ class QueryController:
             "What recommendations are made?",
             "What methodology was used?",
         ]
+
+    def _get_model_config(self) -> Dict[str, str]:
+        """Get actual model configuration from the app config.
+        
+        Returns:
+            Dictionary with actual model names being used
+        """
+        try:
+            # Import the config here to avoid circular imports
+            from core.config import model_config, retrieval_config
+            
+            return {
+                "extraction_model": model_config.extraction_model,
+                "formatting_model": model_config.formatting_model,
+                "embedding_model": retrieval_config.embedding_model,
+                "reranker_model": retrieval_config.reranker_model
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get model config: {str(e)}")
+            # Return defaults if we can't get the actual config
+            return {
+                "extraction_model": "gpt-3.5-turbo",
+                "formatting_model": "gpt-3.5-turbo",
+                "embedding_model": "all-MiniLM-L6-v2",
+                "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2"
+            }

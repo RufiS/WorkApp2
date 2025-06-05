@@ -44,7 +44,9 @@ class ModelConfig:
     extraction_model: str = "gpt-3.5-turbo"
     formatting_model: str = "gpt-3.5-turbo"
     max_tokens: int = 4096
-    temperature: float = 0.0
+    extraction_temperature: float = 0.0  # Keep deterministic for accuracy
+    formatting_temperature: float = 0.4  # Allow creative formatting
+    temperature: float = 0.0  # Backward compatibility
     timeout: int = 60
     retry_attempts: int = 3
     retry_backoff: float = 2.0
@@ -109,8 +111,8 @@ class AppConfig:
     log_level: str = "INFO"
     error_log_path: str = os.path.join(".", "logs", "workapp_errors.log")
     api_keys: Dict[str, str] = field(default_factory=dict)
-    page_title: str = "Document QA"
-    version: str = "0.4.0"
+    page_title: str = "KTI Document QA"
+    version: str = "0.6.1"
     debug_default: bool = False
     ui_settings: Dict[str, Any] = field(default_factory=dict)
     # Additional attributes for UI

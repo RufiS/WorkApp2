@@ -9,5 +9,6 @@ __version__ = "0.1.0"
 from .vector_engine import VectorEngine
 from .hybrid_engine import HybridEngine
 from .reranking_engine import RerankingEngine
+from .splade_engine import SpladeEngine
 
-__all__ = ["VectorEngine", "HybridEngine", "RerankingEngine"]
+__all__ = ["VectorEngine", "HybridEngine", "RerankingEngine", "SpladeEngine"]

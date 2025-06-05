@@ -133,6 +133,9 @@ class HybridEngine:
                 return []
 
             # Simple keyword matching with TF-IDF-like scoring
+            # CRITICAL TYPE SAFETY: Ensure query is string before string operations
+            if not isinstance(query, str):
+                query = str(query) if query is not None else ""
             query_words = set(query.lower().split())
             scored_results = []
 

@@ -162,6 +162,12 @@ class VectorEngine:
         Returns:
             Similarity score between 0 and 1
         """
+        # CRITICAL TYPE SAFETY: Ensure strings before string operations
+        if not isinstance(text1, str):
+            text1 = str(text1) if text1 is not None else ""
+        if not isinstance(text2, str):
+            text2 = str(text2) if text2 is not None else ""
+        
         # Convert texts to sets of words
         words1 = set(text1.split())
         words2 = set(text2.split())

@@ -30,11 +30,25 @@ class UnifiedRetrievalSystem:
         """
         self.document_processor = document_processor or DocumentProcessor()
         self.top_k = retrieval_config.top_k
+        
+        # Check for SPLADE flag
+        self.use_splade = False
 
         # Initialize specialized engines with shared vector engine to prevent duplicates
         self.vector_engine = VectorEngine(self.document_processor)
         self.hybrid_engine = HybridEngine(self.document_processor, shared_vector_engine=self.vector_engine)
         self.reranking_engine = RerankingEngine(self.document_processor, shared_vector_engine=self.vector_engine)
+        
+        # Initialize SPLADE engine if available
+        self.splade_engine = None
+        try:
+            from .engines import SpladeEngine
+            self.splade_engine = SpladeEngine(self.document_processor)
+            logger.info("SPLADE engine initialized and available")
+        except ImportError as e:
+            logger.info("SPLADE engine not available - transformers library may not be installed")
+        except Exception as e:
+            logger.warning(f"SPLADE engine initialization failed: {e}")
 
         # Initialize metrics service
         self.metrics_service = MetricsService(
@@ -78,7 +92,23 @@ class UnifiedRetrievalSystem:
         query_preview = query[:50] + "..." if len(query) > 50 else query
 
         # Determine engine and routing logic
-        if performance_config.enable_reranking:
+        if self.use_splade and self.splade_engine is not None:
+            selected_engine = "splade"
+            routing_reason = "--splade flag enabled (experimental sparse+dense hybrid)"
+
+            # Log engine routing decision (detailed info goes to file only)
+            retrieval_logger.log_engine_routing_decision(
+                query=query,
+                available_engines=["vector", "hybrid", "reranking", "splade"],
+                selected_engine=selected_engine,
+                config_state=config_snapshot,
+                routing_logic=routing_reason
+            )
+
+            # Execute search
+            results = self.splade_engine.search(query, top_k)
+
+        elif performance_config.enable_reranking:
             selected_engine = "reranking"
             routing_reason = "enable_reranking=True in performance_config"
 

@@ -35,8 +35,14 @@ class IndexManager:
         self.embedding_model_name = embedding_model_name or retrieval_config.embedding_model
 
         # Create our own embedding service instance with the specified model
-        self.embedding_service = EmbeddingService(self.embedding_model_name)
+        # Use shared global embedding service to avoid GPU memory duplication (fixes 40s delay!)
+        from core.embeddings.embedding_service import embedding_service
+        self.embedding_service = embedding_service
         self.embedding_dim = self.embedding_service.embedding_dim
+        
+        # Verify the shared service uses the correct model
+        if self.embedding_service.model_name != self.embedding_model_name:
+            logger.warning(f"Using shared embedding service with model {self.embedding_service.model_name} instead of requested {self.embedding_model_name}")
 
         # Initialize state variables for backward compatibility
         self.index = None

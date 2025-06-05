@@ -15,6 +15,8 @@
     "extraction_model": "gpt-4-turbo",
     "formatting_model": "gpt-3.5-turbo",
     "max_tokens": 4096,
+    "extraction_temperature": 0.0,
+    "formatting_temperature": 0.4,
     "temperature": 0.0,
     "timeout": 60,
     "retry_attempts": 3,
@@ -36,9 +38,8 @@
   "data_dir": "./data",
   "log_level": "INFO",
   "error_log_path": "./logs/workapp_errors.log",
-
-  "page_title": "Document QA",
-  "version": "0.4.0",
+  "page_title": "KTI Document QA",
+  "version": "0.6.1",
   "debug_default": false,
   "ui_settings": {
     "theme": "light",

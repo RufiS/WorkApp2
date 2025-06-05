@@ -372,11 +372,12 @@ class AnswerPipeline:
             # Generate formatting prompt with the extracted answer text
             formatting_prompt = self.prompt_generator.generate_formatting_prompt(answer_text)
 
-            # Get formatting result
+            # Get formatting result with creative temperature for natural expression
             formatting_response = await self.llm_service.async_chat_completion(
                 prompt=formatting_prompt,
                 model=model_config.formatting_model,
                 max_tokens=model_config.max_tokens,
+                temperature=model_config.formatting_temperature,
             )
 
             # Log formatting attempt

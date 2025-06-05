@@ -16,10 +16,10 @@ class AppConfig(BaseModel):
         validate_default=True
     )
 
-    page_title: str = Field("WorkApp Document QA", description="Application page title")
+    page_title: str = Field("KTI Document QA", description="Application page title")
     icon: str = Field("📚", description="Application icon")
     subtitle: Optional[str] = Field("AI-powered document analysis", description="Application subtitle")
-    version: str = Field("0.4.0", description="Application version")
+    version: str = Field("0.6.1", description="Application version")
     api_keys: Dict[str, str] = Field(default_factory=dict, description="API keys for external services")
 
     @validator('version')

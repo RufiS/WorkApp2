@@ -107,7 +107,7 @@ class OptimizedAnswerPipeline:
 
     def generate_answer(self, query: str, context: str) -> Dict[str, Any]:
         """
-        Synchronous wrapper with proper async handling (no ThreadPoolExecutor)
+        Synchronous wrapper with modern async handling
 
         Args:
             query: The user's question
@@ -119,31 +119,21 @@ class OptimizedAnswerPipeline:
         try:
             # Check if we're already in an async context
             try:
-                loop = asyncio.get_running_loop()
-                # We're in an async context, run the coroutine
-                task = asyncio.create_task(self.generate_answer_async(query, context))
-                
-                # If we can't await directly, we need to handle this differently
-                # For now, create a new event loop in a thread
+                asyncio.get_running_loop()
+                # We're in an async context, need to run in a separate thread
                 import concurrent.futures
                 import threading
                 
-                def run_in_new_loop():
-                    new_loop = asyncio.new_event_loop()
-                    try:
-                        asyncio.set_event_loop(new_loop)
-                        return new_loop.run_until_complete(
-                            self.generate_answer_async(query, context)
-                        )
-                    finally:
-                        new_loop.close()
+                def run_in_thread():
+                    # Use modern asyncio.run() in new thread
+                    return asyncio.run(self.generate_answer_async(query, context))
                 
                 with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(run_in_new_loop)
+                    future = executor.submit(run_in_thread)
                     return future.result(timeout=120)  # 2 minute timeout
                     
             except RuntimeError:
-                # No event loop running, safe to use asyncio.run()
+                # No event loop running, use modern asyncio.run()
                 return asyncio.run(self.generate_answer_async(query, context))
                 
         except Exception as e:

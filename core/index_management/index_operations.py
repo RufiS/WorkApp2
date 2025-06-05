@@ -157,8 +157,8 @@ def load_index(
     if not os.path.exists(index_file) or not os.path.exists(texts_file):
         logger.warning(f"Index files not found at {resolved_index_path}")
         # Get embedding dimension from current embedding service
-        from core.embeddings.embedding_service import EmbeddingService
-        embedding_service = EmbeddingService()
+        # Use shared global embedding service to avoid GPU memory duplication
+        from core.embeddings.embedding_service import embedding_service
         dimension = embedding_service.embedding_dim  # Use current model dimension
         if os.path.exists(metadata_file):
             try:

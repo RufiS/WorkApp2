@@ -12,7 +12,7 @@ import logging
 import os
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Tuple, Optional
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class RetrievalLogger:
 
         # Create comprehensive log entry
         log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             "session_id": session_id,
             "query": query,
             "query_hash": hash(query) % (10**8),  # For tracking identical queries
@@ -127,7 +127,7 @@ class RetrievalLogger:
             routing_logic: Explanation of routing logic
         """
         routing_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             "event_type": "engine_routing",
             "query_preview": self._truncate_text(query, 50),
             "available_engines": available_engines,
@@ -321,7 +321,7 @@ class RetrievalLogger:
             "engines_used": engines_used,
             "estimated_success_rate": success_rates["successful"] / success_rates["total"] if success_rates["total"] > 0 else 0,
             "average_latency": sum(avg_latency) / len(avg_latency) if avg_latency else 0,
-            "analysis_timestamp": datetime.utcnow().isoformat() + "Z"
+            "analysis_timestamp": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
         }
 
 
