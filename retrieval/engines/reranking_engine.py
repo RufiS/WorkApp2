@@ -48,6 +48,34 @@ class RerankingEngine:
         engine_source = "shared" if shared_vector_engine else "new"
         self.logger.info(f"Reranking engine initialized with model: {self._reranker_model} ({engine_source} vector engine)")
 
+    def _is_evaluation_mode(self) -> bool:
+        """Check if we're currently in evaluation mode where fallbacks should be disabled.
+        
+        Returns:
+            True if in evaluation mode, False otherwise
+        """
+        try:
+            # Check if retrieval system has evaluation mode enabled
+            # This requires accessing the parent retrieval system
+            import retrieval.retrieval_system as retrieval_sys
+            if hasattr(retrieval_sys, '_evaluation_mode_enabled'):
+                return retrieval_sys._evaluation_mode_enabled
+            
+            # Alternative: Check for evaluation mode environment variable
+            import os
+            if os.environ.get('EVALUATION_MODE', '').lower() == 'true':
+                return True
+            
+            # Alternative: Check config for evaluation mode
+            if hasattr(performance_config, 'evaluation_mode') and performance_config.evaluation_mode:
+                return True
+                
+            return False
+            
+        except Exception as e:
+            self.logger.debug(f"Error checking evaluation mode: {e}")
+            return False  # Default to production mode if unsure
+
     @property
     def cross_encoder(self):
         """Lazy load the cross-encoder model."""
@@ -151,7 +179,15 @@ class RerankingEngine:
 
         except Exception as e:
             self.logger.error(f"Error in reranking search: {str(e)}", exc_info=True)
-            # Fall back to vector search
+            
+            # CRITICAL FIX: Check if we're in evaluation mode - NO FALLBACKS ALLOWED
+            if self._is_evaluation_mode():
+                error_msg = f"PIPELINE_FAILURE: Reranking engine failed in evaluation mode: {str(e)}"
+                self.logger.error(error_msg)
+                # Return failure context that will be properly penalized in evaluation
+                return error_msg, time.time() - start_time, 0, []
+            
+            # Fall back to vector search ONLY in production mode
             self.logger.info("Falling back to vector search due to reranking error")
             return self.vector_engine.search(query, top_k)
 

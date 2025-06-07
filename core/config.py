@@ -98,6 +98,16 @@ class PerformanceConfig:
     log_query_metrics: bool = True
     log_zero_hit_queries: bool = True
 
+    # GPU Resource Management
+    gpu_resource_management: Dict[str, Union[int, float, bool]] = field(default_factory=lambda: {
+        "ollama_vram_reservation_mb": 12288,
+        "max_workers_per_gb": 0.25,
+        "min_vram_per_worker_gb": 3.0,
+        "enable_ollama_detection": True,
+        "fallback_to_cpu_when_constrained": True,
+        "safety_buffer_mb": 1024
+    })
+
 
 @dataclass
 class AppConfig:

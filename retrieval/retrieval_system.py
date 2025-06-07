@@ -31,8 +31,12 @@ class UnifiedRetrievalSystem:
         self.document_processor = document_processor or DocumentProcessor()
         self.top_k = retrieval_config.top_k
         
-        # Check for SPLADE flag
+        # Pipeline control flags
         self.use_splade = False
+        self.use_reranker = False
+        
+        # CRITICAL FIX: Evaluation mode disables fallbacks for authentic failure testing
+        self.evaluation_mode = False
 
         # Initialize specialized engines with shared vector engine to prevent duplicates
         self.vector_engine = VectorEngine(self.document_processor)
@@ -46,9 +50,11 @@ class UnifiedRetrievalSystem:
             self.splade_engine = SpladeEngine(self.document_processor)
             logger.info("SPLADE engine initialized and available")
         except ImportError as e:
-            logger.info("SPLADE engine not available - transformers library may not be installed")
+            logger.info(f"SPLADE engine not available - ImportError: {e}")
         except Exception as e:
-            logger.warning(f"SPLADE engine initialization failed: {e}")
+            logger.error(f"SPLADE engine initialization failed: {e}", exc_info=True)
+            # Still log as error but continue without SPLADE
+            self.splade_engine = None
 
         # Initialize metrics service
         self.metrics_service = MetricsService(
@@ -62,13 +68,15 @@ class UnifiedRetrievalSystem:
     def retrieve(
         self,
         query: str,
-        top_k: Optional[int] = None
+        top_k: Optional[int] = None,
+        pipeline_type: Optional[str] = None
     ) -> Tuple[str, float, int, List[float]]:
-        """Intelligently route retrieval based on configuration settings.
+        """Intelligently route retrieval based on configuration settings or explicit pipeline type.
 
         Args:
             query: Query string
             top_k: Number of top results to return (None for default)
+            pipeline_type: Explicit pipeline type override (None for config-based routing)
 
         Returns:
             Tuple of (formatted context string, retrieval time, number of chunks, retrieval scores)
@@ -85,75 +93,108 @@ class UnifiedRetrievalSystem:
             "vector_weight": getattr(retrieval_config, 'vector_weight', 0.7),
             "chunk_size": retrieval_config.chunk_size,
             "chunk_overlap": retrieval_config.chunk_overlap,
-            "max_context_length": retrieval_config.max_context_length
+            "max_context_length": retrieval_config.max_context_length,
+            "pipeline_type_override": pipeline_type
         }
 
         # Log the query and routing decision
         query_preview = query[:50] + "..." if len(query) > 50 else query
 
-        # Determine engine and routing logic
+        # NEW: Handle explicit pipeline type requests (for evaluation framework)
+        if pipeline_type:
+            return self._execute_pipeline(query, top_k, pipeline_type, config_snapshot)
+
+        # LEGACY: Determine engine and routing logic from configuration
         if self.use_splade and self.splade_engine is not None:
-            selected_engine = "splade"
+            selected_engine = "splade_only"
             routing_reason = "--splade flag enabled (experimental sparse+dense hybrid)"
-
-            # Log engine routing decision (detailed info goes to file only)
-            retrieval_logger.log_engine_routing_decision(
-                query=query,
-                available_engines=["vector", "hybrid", "reranking", "splade"],
-                selected_engine=selected_engine,
-                config_state=config_snapshot,
-                routing_logic=routing_reason
-            )
-
-            # Execute search
-            results = self.splade_engine.search(query, top_k)
-
         elif performance_config.enable_reranking:
-            selected_engine = "reranking"
+            selected_engine = "reranker_only"
             routing_reason = "enable_reranking=True in performance_config"
-
-            # Log engine routing decision (detailed info goes to file only)
-            retrieval_logger.log_engine_routing_decision(
-                query=query,
-                available_engines=["vector", "hybrid", "reranking"],
-                selected_engine=selected_engine,
-                config_state=config_snapshot,
-                routing_logic=routing_reason
-            )
-
-            # Execute search
-            results = self.reranking_engine.search(query, top_k)
-
         elif retrieval_config.enhanced_mode:
             selected_engine = "hybrid"
             routing_reason = f"enhanced_mode=True, vector_weight={config_snapshot['vector_weight']}"
-
-            # Log engine routing decision (detailed info goes to file only)
-            retrieval_logger.log_engine_routing_decision(
-                query=query,
-                available_engines=["vector", "hybrid", "reranking"],
-                selected_engine=selected_engine,
-                config_state=config_snapshot,
-                routing_logic=routing_reason
-            )
-
-            # Execute search
-            results = self.hybrid_engine.search(query, top_k)
-
         else:
-            selected_engine = "vector"
+            selected_engine = "vector_baseline"
             routing_reason = "enhanced_mode=False, reranking=False (basic vector search)"
 
-            # Log engine routing decision (detailed info goes to file only)
-            retrieval_logger.log_engine_routing_decision(
-                query=query,
-                available_engines=["vector", "hybrid", "reranking"],
-                selected_engine=selected_engine,
-                config_state=config_snapshot,
-                routing_logic=routing_reason
-            )
+        return self._execute_pipeline(query, top_k, selected_engine, config_snapshot, routing_reason)
 
-            # Execute search
+    def _execute_pipeline(
+        self, 
+        query: str, 
+        top_k: int, 
+        pipeline_type: str, 
+        config_snapshot: Dict[str, Any],
+        routing_reason: Optional[str] = None
+    ) -> Tuple[str, float, int, List[float]]:
+        """Execute a specific pipeline type.
+        
+        Args:
+            query: Query string
+            top_k: Number of results to return
+            pipeline_type: Type of pipeline to execute
+            config_snapshot: Configuration snapshot for logging
+            routing_reason: Reason for pipeline selection
+            
+        Returns:
+            Tuple of (formatted context string, retrieval time, number of chunks, retrieval scores)
+        """
+        routing_reason = routing_reason or f"Explicit pipeline type: {pipeline_type}"
+        
+        # Log engine routing decision
+        retrieval_logger.log_engine_routing_decision(
+            query=query,
+            available_engines=["vector_baseline", "reranker_only", "splade_only", "reranker_then_splade", "splade_then_reranker"],
+            selected_engine=pipeline_type,
+            config_state=config_snapshot,
+            routing_logic=routing_reason
+        )
+
+        # Execute the specified pipeline
+        if pipeline_type == "vector_baseline":
+            results = self.vector_engine.search(query, top_k)
+            
+        elif pipeline_type == "reranker_only":
+            results = self.reranking_engine.search(query, top_k)
+            
+        elif pipeline_type == "splade_only":
+            if self.splade_engine is not None:
+                results = self.splade_engine.search(query, top_k)
+            else:
+                if self.evaluation_mode:
+                    # CRITICAL FIX: In evaluation mode, return authentic failure instead of fallback
+                    logger.warning("EVALUATION MODE: SPLADE engine not available - returning failure")
+                    return "PIPELINE_FAILURE: SPLADE engine not available", 0.0, 0, []
+                else:
+                    logger.warning("SPLADE engine not available, falling back to vector search")
+                    results = self.vector_engine.search(query, top_k)
+                
+        elif pipeline_type == "reranker_then_splade":
+            # FIXED: Actual chaining implementation - vector → reranker → SPLADE
+            results = self._chain_reranker_then_splade(query, top_k)
+            
+        elif pipeline_type == "splade_then_reranker":
+            # FIXED: Actual chaining implementation - vector → SPLADE → reranker  
+            results = self._chain_splade_then_reranker(query, top_k)
+            
+        # Legacy mappings for backward compatibility
+        elif pipeline_type == "splade":
+            pipeline_type = "splade_only"
+            results = self.splade_engine.search(query, top_k) if self.splade_engine else self.vector_engine.search(query, top_k)
+        elif pipeline_type == "reranking":
+            pipeline_type = "reranker_only"
+            results = self.reranking_engine.search(query, top_k)
+        elif pipeline_type == "hybrid":
+            results = self.hybrid_engine.search(query, top_k)
+        elif pipeline_type == "vector":
+            pipeline_type = "vector_baseline"
+            results = self.vector_engine.search(query, top_k)
+        elif pipeline_type == "vector_only":
+            pipeline_type = "vector_baseline"
+            results = self.vector_engine.search(query, top_k)
+        else:
+            logger.error(f"Unknown pipeline type: {pipeline_type}, falling back to vector search")
             results = self.vector_engine.search(query, top_k)
 
         # Assess context quality
@@ -167,16 +208,120 @@ class UnifiedRetrievalSystem:
         # Log comprehensive retrieval operation
         session_id = retrieval_logger.log_retrieval_operation(
             query=query,
-            engine_used=selected_engine,
+            engine_used=pipeline_type,
             config_snapshot=config_snapshot,
             retrieval_results=results,
             context_quality_score=context_quality,
             routing_reason=routing_reason
         )
 
-        logger.info(f"RETRIEVAL COMPLETED: {session_id} - Quality: {context_quality:.2f}, Engine: {selected_engine}")
+        logger.info(f"RETRIEVAL COMPLETED: {session_id} - Quality: {context_quality:.2f}, Pipeline: {pipeline_type}")
 
         return results
+
+    def _chain_reranker_then_splade(self, query: str, top_k: int) -> Tuple[str, float, int, List[float]]:
+        """Execute reranker → SPLADE chained pipeline.
+        
+        Args:
+            query: Query string
+            top_k: Final number of results to return
+            
+        Returns:
+            Tuple of (formatted context string, retrieval time, number of chunks, retrieval scores)
+        """
+        start_time = time.time()
+        
+        logger.info(f"Executing reranker → SPLADE pipeline for query: '{query[:50]}...'")
+        
+        try:
+            # Step 1: Get initial results with reranker (increased top_k for better SPLADE input)
+            reranker_top_k = max(top_k * 3, 15)  # Get more results for SPLADE to work with
+            logger.debug(f"Step 1: Reranker with top_k={reranker_top_k}")
+            
+            reranked_context, rerank_time, rerank_count, rerank_scores = self.reranking_engine.search(query, reranker_top_k)
+            
+            if not reranked_context or rerank_count == 0:
+                if self.evaluation_mode:
+                    # CRITICAL FIX: In evaluation mode, return authentic failure instead of fallback
+                    logger.warning("EVALUATION MODE: Reranker step failed (0 results) - returning failure")
+                    return "PIPELINE_FAILURE: Reranker returned 0 results", time.time() - start_time, 0, []
+                else:
+                    logger.warning("No results from reranker step, falling back to vector search")
+                    return self.vector_engine.search(query, top_k)
+            
+            # Step 2: Use SPLADE engine on the reranked results
+            if self.splade_engine is not None:
+                logger.debug(f"Step 2: SPLADE refinement targeting top_k={top_k}")
+                
+                # SPLADE processes the query against the reranked context
+                splade_context, splade_time, splade_count, splade_scores = self.splade_engine.search(query, top_k)
+                
+                total_time = time.time() - start_time
+                
+                logger.info(f"Reranker → SPLADE complete: {rerank_count} → {splade_count} chunks, {total_time:.3f}s total")
+                
+                return splade_context, total_time, splade_count, splade_scores
+            else:
+                logger.warning("SPLADE engine not available, returning reranker results")
+                return reranked_context, time.time() - start_time, rerank_count, rerank_scores
+                
+        except Exception as e:
+            logger.error(f"Error in reranker → SPLADE pipeline: {e}")
+            # Fallback to reranker only
+            return self.reranking_engine.search(query, top_k)
+
+    def _chain_splade_then_reranker(self, query: str, top_k: int) -> Tuple[str, float, int, List[float]]:
+        """Execute SPLADE → reranker chained pipeline.
+        
+        Args:
+            query: Query string  
+            top_k: Final number of results to return
+            
+        Returns:
+            Tuple of (formatted context string, retrieval time, number of chunks, retrieval scores)
+        """
+        start_time = time.time()
+        
+        logger.info(f"Executing SPLADE → reranker pipeline for query: '{query[:50]}...'")
+        
+        try:
+            # Step 1: Get initial results with SPLADE (increased top_k for better reranker input)
+            splade_top_k = max(top_k * 3, 15)  # Get more results for reranker to work with
+            logger.debug(f"Step 1: SPLADE with top_k={splade_top_k}")
+            
+            if self.splade_engine is not None:
+                splade_context, splade_time, splade_count, splade_scores = self.splade_engine.search(query, splade_top_k)
+                
+                if not splade_context or splade_count == 0:
+                    if self.evaluation_mode:
+                        # CRITICAL FIX: In evaluation mode, return authentic failure instead of fallback
+                        logger.warning("EVALUATION MODE: SPLADE step failed (0 results) - returning failure")
+                        return "PIPELINE_FAILURE: SPLADE returned 0 results", time.time() - start_time, 0, []
+                    else:
+                        logger.warning("No results from SPLADE step, falling back to vector search")
+                        return self.vector_engine.search(query, top_k)
+                
+                # Step 2: Apply reranking to SPLADE results
+                logger.debug(f"Step 2: Reranker refinement targeting top_k={top_k}")
+                
+                reranked_context, rerank_time, rerank_count, rerank_scores = self.reranking_engine.search(query, top_k)
+                
+                total_time = time.time() - start_time
+                
+                logger.info(f"SPLADE → reranker complete: {splade_count} → {rerank_count} chunks, {total_time:.3f}s total")
+                
+                return reranked_context, total_time, rerank_count, rerank_scores
+            else:
+                logger.warning("SPLADE engine not available, falling back to reranker only")
+                return self.reranking_engine.search(query, top_k)
+                
+        except Exception as e:
+            logger.error(f"Error in SPLADE → reranker pipeline: {e}")
+            # Fallback to SPLADE only or vector if SPLADE unavailable
+            if self.splade_engine:
+                return self.splade_engine.search(query, top_k)
+            else:
+                return self.vector_engine.search(query, top_k)
 
     def get_metrics(self) -> Dict[str, Any]:
         """Get comprehensive metrics from all engines."""
@@ -241,3 +386,26 @@ class UnifiedRetrievalSystem:
     def get_engine_info(self) -> Dict[str, Any]:
         """Get information about available engines and their status."""
         return self.metrics_service.get_engine_info()
+
+    def set_evaluation_mode(self, enabled: bool) -> None:
+        """Enable or disable evaluation mode.
+        
+        In evaluation mode, fallbacks are disabled to allow authentic failures
+        for proper parameter testing and optimization.
+        
+        Args:
+            enabled: True to enable evaluation mode, False for production mode
+        """
+        self.evaluation_mode = enabled
+        if enabled:
+            logger.info("EVALUATION MODE ENABLED: Fallbacks disabled for authentic failure testing")
+        else:
+            logger.info("Production mode enabled: Fallbacks active for robustness")
+
+    def is_evaluation_mode(self) -> bool:
+        """Check if evaluation mode is currently enabled.
+        
+        Returns:
+            True if evaluation mode is enabled, False otherwise
+        """
+        return self.evaluation_mode

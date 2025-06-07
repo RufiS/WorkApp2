@@ -197,6 +197,13 @@ class ComprehensiveSystematicEvaluator:
         # Track current configuration
         self.current_embedding_model = None
         self.current_reranker_model = None
+        self.current_pipeline_type = None  # Track pipeline type for proper SPLADE scoping
+        
+        # CRITICAL FIX: Track indexing-time parameters that require index rebuild
+        self.current_max_sparse_length = None
+        self.current_expansion_k = None
+        self.current_splade_model = None  # SPLADE model also affects document indexing
+        
         self.orchestrator = None
         self.doc_processor = None
         self.llm_service = None 
@@ -855,23 +862,63 @@ Return only JSON: {{"factual_accuracy": X.X, "completeness": X.X, "relevance": X
                 logger.info(f"   Previous: {self.last_config_key}")
                 logger.info(f"   Current:  {current_config_key}")
                 
-                # 1. Handle embedding model changes (requires index rebuild)
-                if (self.current_embedding_model != config.embedding_model or
-                    self.orchestrator is None):
-                    
-                    logger.info(f"Switching embedding model: {self.current_embedding_model} → {config.embedding_model}")
+                # 1. Handle model and indexing-time parameter changes (require index rebuild)
+                # CRITICAL FIX: Properly scope SPLADE parameters - only check when using SPLADE
+                
+                # Check if current or new config uses SPLADE
+                current_uses_splade = self.current_pipeline_type in ["pure_splade", "reranker_then_splade", "splade_then_reranker"] if self.current_pipeline_type else False
+                new_uses_splade = config.pipeline_type in ["pure_splade", "reranker_then_splade", "splade_then_reranker"]
+                
+                # Base indexing parameters (always check these)
+                base_params_changed = (
+                    self.current_embedding_model != config.embedding_model or
+                    self.orchestrator is None
+                )
+                
+                # SPLADE parameters (only check when current OR new config uses SPLADE)
+                splade_params_changed = False
+                if current_uses_splade or new_uses_splade:
+                    splade_params_changed = (
+                        self.current_max_sparse_length != config.max_sparse_length or
+                        self.current_expansion_k != config.expansion_k or
+                        self.current_splade_model != config.splade_model
+                    )
+                    logger.info(f"   SPLADE parameter check (current_uses={current_uses_splade}, new_uses={new_uses_splade}): {splade_params_changed}")
+                else:
+                    logger.info(f"   SPLADE parameters skipped (current_uses={current_uses_splade}, new_uses={new_uses_splade})")
+                
+                # Pipeline type change (switching between SPLADE and non-SPLADE requires rebuild)
+                pipeline_change = self.current_pipeline_type != config.pipeline_type
+                
+                indexing_params_changed = base_params_changed or splade_params_changed or pipeline_change
+                
+                if indexing_params_changed:
+                    logger.info(f"🔄 INDEXING-TIME PARAMETER CHANGE DETECTED:")
+                    logger.info(f"   Embedding model: {self.current_embedding_model} → {config.embedding_model}")
+                    logger.info(f"   SPLADE model: {self.current_splade_model} → {config.splade_model}")
+                    logger.info(f"   Max sparse length: {self.current_max_sparse_length} → {config.max_sparse_length}")
+                    logger.info(f"   Expansion K: {self.current_expansion_k} → {config.expansion_k}")
+                    logger.info(f"   → INDEX REBUILD REQUIRED")
                     
                     # Backup current index if exists
                     if self.current_embedding_model and self.doc_processor:
-                        self._backup_current_index(self.current_embedding_model)
+                        # Create backup key with indexing parameters
+                        backup_key = f"{self.current_embedding_model}_{self.current_splade_model}_{self.current_max_sparse_length}_{self.current_expansion_k}"
+                        self._backup_current_index(backup_key)
                     
                     # Initialize new orchestrator with new embedding model  
                     self._initialize_orchestrator(config.embedding_model)
                     
-                    # Load or create index for this embedding model
-                    self._setup_index_for_embedding_model(config.embedding_model)
+                    # Setup index for this parameter combination
+                    index_key = f"{config.embedding_model}_{config.splade_model}_{config.max_sparse_length}_{config.expansion_k}"
+                    self._setup_index_for_parameter_combination(index_key, config.embedding_model)
                     
+                    # Update all indexing-time parameter tracking
                     self.current_embedding_model = config.embedding_model
+                    self.current_splade_model = config.splade_model
+                    self.current_max_sparse_length = config.max_sparse_length
+                    self.current_expansion_k = config.expansion_k
+                    self.current_pipeline_type = config.pipeline_type  # CRITICAL: Track pipeline type
                     config.index_regenerated = True
                 
                 # 2. Handle reranker model changes
@@ -1126,6 +1173,43 @@ Return only JSON: {{"factual_accuracy": X.X, "completeness": X.X, "relevance": X
         # Build new index if no backup
         logger.info(f"Building new index for {embedding_model}")
         # The orchestrator should handle this automatically
+    
+    def _setup_index_for_parameter_combination(self, index_key: str, embedding_model: str):
+        """Setup index for specific parameter combination with indexing-time parameters.
+        
+        Args:
+            index_key: Combined key like "model_splade_maxlen_expansionk"
+            embedding_model: Base embedding model for fallback
+        """
+        backup_dir = self.index_backup_dir / index_key.replace("/", "_")
+        index_dir = Path("./data/index")
+        
+        # Try to restore from parameter-specific backup first
+        if backup_dir.exists() and any(backup_dir.iterdir()):
+            try:
+                if index_dir.exists():
+                    shutil.rmtree(index_dir)
+                shutil.copytree(backup_dir, index_dir)
+                logger.info(f"Restored index from parameter backup: {index_key}")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to restore parameter backup {index_key}: {e}")
+        
+        # Fallback to embedding model backup
+        embedding_backup_dir = self.index_backup_dir / embedding_model.replace("/", "_")
+        if embedding_backup_dir.exists() and any(embedding_backup_dir.iterdir()):
+            try:
+                if index_dir.exists():
+                    shutil.rmtree(index_dir)
+                shutil.copytree(embedding_backup_dir, index_dir)
+                logger.info(f"Restored from embedding backup: {embedding_model}")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to restore embedding backup {embedding_model}: {e}")
+        
+        # Build completely new index if no backups
+        logger.info(f"Building new index for parameter combination: {index_key}")
+        # The orchestrator will handle this automatically during initialization
     
     def _update_reranker_model(self, reranker_model: str):
         """Update reranker model in the system."""

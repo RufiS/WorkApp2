@@ -40,13 +40,10 @@ class AppOrchestrator:
         self._services_initialized = False
         self._models_preloaded = False
 
-    @st.cache_resource
     @with_advanced_retry(max_attempts=3, backoff_factor=2.0)
     @with_error_tracking()
-    def initialize_services(_self) -> Tuple[DocumentProcessor, LLMService, UnifiedRetrievalSystem]:
-        """Initialize and cache the application services.
-
-        Note: Using _self to work with st.cache_resource decorator
+    def initialize_services(self) -> Tuple[DocumentProcessor, LLMService, UnifiedRetrievalSystem]:
+        """Initialize the application services.
 
         Returns:
             Tuple containing document processor, LLM service, and retrieval system
@@ -61,9 +58,15 @@ class AppOrchestrator:
             # Use the consolidated LLM service
             llm_service = LLMService(app_config.api_keys.get("openai", ""))
 
-            # Use the unified retrieval system
+            # Use the unified retrieval system with enhanced error handling
             retrieval_system = UnifiedRetrievalSystem(doc_processor)
-            logger.info("Core services initialized successfully")
+            
+            # CRITICAL: Verify SPLADE engine status after initialization
+            splade_available = retrieval_system.splade_engine is not None
+            logger.info(f"Core services initialized successfully - SPLADE available: {splade_available}")
+            
+            if not splade_available:
+                logger.warning("SPLADE engine not available - check transformers/torch dependencies")
 
             # Ensure index is loaded if it exists
             if doc_processor.has_index() and (

@@ -1,11 +1,11 @@
 [
   {
-    "question": "What is Karls Technology’s hourly rate for on-site computer repair?",
+    "question": "What is Karls Technology's hourly rate for on-site computer repair?",
     "answer": "$125 per hour."
   },
   {
     "question": "If a visit lasts exactly one hour and no trip fee applies, what is the total charge including the fuel surcharge?",
-    "answer": "$129 total – that is $125 labor plus the $4 fuel surcharge."
+    "answer": "$129 total â€“ that is $125 labor plus the $4 fuel surcharge."
   },
   {
     "question": "List the four standard arrival windows used to schedule Field Engineer visits.",
@@ -13,7 +13,7 @@
   },
   {
     "question": "Which two optional arrival windows are mainly used for revisits or route optimization?",
-    "answer": "10:30 AM–1:30 PM and 4–7 PM."
+    "answer": "10:30 AMâ€“1:30 PM and 4â€“7 PM."
   },
   {
     "question": "What exact greeting must a dispatcher give when answering a live call?",
@@ -25,7 +25,7 @@
   },
   {
     "question": "What three device details must be gathered on every booking call?",
-    "answer": "Whether the device is Windows or Apple, whether it’s a laptop/desktop/tablet, and its approximate age."
+    "answer": "Whether the device is Windows or Apple, whether it's a laptop/desktop/tablet, and its approximate age."
   },
   {
     "question": "Enumerate the 13 call-log scenarios available in KT3.",
@@ -33,7 +33,7 @@
   },
   {
     "question": "How many call logs per workday and what booking-rate percentage are dispatchers expected to achieve?",
-    "answer": "40–60 logs per day with a 20–30 % booking rate."
+    "answer": "40â€“60 logs per day with a 20â€“30 % booking rate."
   },
   {
     "question": "How many hours ahead of Arizona is Eastern Standard Time?",
@@ -44,15 +44,15 @@
     "answer": "In 15-minute increments billed at $31.25 per quarter hour."
   },
   {
-    "question": "When may dispatchers call a client outside the normal 7 AM–9 PM local window?",
-    "answer": "If the call is within 15 minutes of the client’s inbound call or online request, dispatch can call at any hour."
+    "question": "When may dispatchers call a client outside the normal 7 AMâ€“9 PM local window?",
+    "answer": "If the call is within 15 minutes of the client's inbound call or online request, dispatch can call at any hour."
   },
   {
-    "question": "Define a Revisit appointment’s billing rules.",
+    "question": "Define a Revisit appointment's billing rules.",
     "answer": "A Revisit is complimentary up to the amount of time spent on the prior visit (first hour free if the first visit was one hour). Any extra time is billed at the normal rate."
   },
   {
-    "question": "What immediately voids a client’s two-week Revisit warranty?",
+    "question": "What immediately voids a client's two-week Revisit warranty?",
     "answer": "Waiving even one of the four points of the inspection."
   },
   {
@@ -61,15 +61,15 @@
   },
   {
     "question": "Outline the complete procedure for informing a Field Engineer to call a previous client.",
-    "answer": "Collect the client’s name, number, and reason; ping the FE in Slack with those details plus the last work-order link; create a two-hour reminder event on the FE’s calendar titled “Call [Client] [Number]”; paste the Slack link into the work order; and be sure not to block availability."
+    "answer": "Collect the client's name, number, and reason; ping the FE in Slack with those details plus the last work-order link; create a two-hour reminder event on the FE's calendar titled \"Call [Client] [Number]\"; paste the Slack link into the work order; and be sure not to block availability."
   },
   {
-    "question": "When viewed in Arizona time, where does an EST Field Engineer’s 8–10 AM appointment appear on the KT3 calendar?",
-    "answer": "It shows in the 6–8 AM slot because EST is two hours ahead of Arizona."
+    "question": "When viewed in Arizona time, where does an EST Field Engineer's 8â€“10 AM appointment appear on the KT3 calendar?",
+    "answer": "It shows in the 6â€“8 AM slot because EST is two hours ahead of Arizona."
   },
   {
     "question": "By what time must clients notify dispatch to avoid a Same-Day-Cancellation fee?",
-    "answer": "No later than 8 PM in the client’s local time on the evening before the appointment."
+    "answer": "No later than 8 PM in the client's local time on the evening before the appointment."
   },
   {
     "question": "How much is the fuel surcharge and who receives it?",
@@ -77,26 +77,26 @@
   },
   {
     "question": "Write a concise email reply to a client who asked for a price quote but gave no phone number.",
-    "answer": "Thank you for reaching out about your computer issues. We’d be happy to assist. An accurate quote requires a quick call—could you share the best phone number and a convenient time for us to contact you?"
+    "answer": "Thank you for reaching out about your computer issues. We'd be happy to assist. An accurate quote requires a quick callâ€”could you share the best phone number and a convenient time for us to contact you?"
   },
   {
-    "question": "Explain “double stacking” in route optimization.",
+    "question": "Explain \"double stacking\" in route optimization.",
     "answer": "Booking two clients in the same three-hour window so a Field Engineer can handle them back-to-back, minimizing zig-zag driving and keeping total drive time under the two-hour goal."
   },
   {
     "question": "Which payment methods are acceptable and which are not?",
-    "answer": "Acceptable – Visa, MasterCard, Discover, American Express (including prepaid or gift versions). Not acceptable – cash or check."
+    "answer": "Acceptable â€“ Visa, MasterCard, Discover, American Express (including prepaid or gift versions). Not acceptable â€“ cash or check."
   },
   {
     "question": "Describe the steps to manually merge two tickets in Freshdesk.",
     "answer": "Select the duplicate tickets, click Merge, choose which one is the primary (usually the newest), confirm, and complete the merge so all history lives in a single ticket."
   },
   {
-    "question": "When logging a ‘Too Far Out’ case, what four details must be recorded?",
+    "question": "When logging a 'Too Far Out' case, what four details must be recorded?",
     "answer": "Client ZIP, brief summary of the issue, date offered versus date desired, and whether a remote option was proposed."
   },
   {
-    "question": "What is the dispatcher’s daily target for scheduling billable appointments per Field Engineer?",
+    "question": "What is the dispatcher's daily target for scheduling billable appointments per Field Engineer?",
     "answer": "At least four billable appointments each workday."
   }
 ]

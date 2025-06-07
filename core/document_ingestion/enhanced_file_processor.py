@@ -103,21 +103,28 @@ class EnhancedFileProcessor:
         chunk_size = self.chunk_size
         chunk_overlap = self.chunk_overlap
 
-        # Ensure chunk size is reasonable for meaningful content
-        if chunk_size < 500:
-            logger.warning(f"Chunk size {chunk_size} too small for meaningful content, adjusting to 800")
-            chunk_size = 800
+        # EVALUATION FIX: Allow small chunk sizes for systematic testing
+        if chunk_size < 200:
+            logger.warning(f"Chunk size {chunk_size} extremely small, adjusting to 200 (minimum)")
+            chunk_size = 200
+        elif chunk_size < 400:
+            logger.info(f"Using small chunk size {chunk_size} for evaluation testing")
         elif chunk_size > 2000:
             logger.warning(f"Chunk size {chunk_size} too large, adjusting to 1500")
             chunk_size = 1500
 
-        # Ensure chunk overlap maintains context
+        # EVALUATION FIX: Ensure chunk overlap maintains context but respects evaluation testing
         if chunk_overlap < 100:
             logger.warning(f"Chunk overlap {chunk_overlap} too small, adjusting to 150")
             chunk_overlap = 150
         elif chunk_overlap >= chunk_size // 2:
-            overlap_target = chunk_size // 4
-            logger.warning(f"Chunk overlap {chunk_overlap} too large, adjusting to {overlap_target}")
+            # EVALUATION FIX: Use proportional overlap for small chunk sizes during testing
+            if chunk_size < 500:
+                overlap_target = min(chunk_overlap, chunk_size // 4)
+                logger.info(f"Using proportional overlap {overlap_target} for small chunk size {chunk_size} (evaluation testing)")
+            else:
+                overlap_target = chunk_size // 4
+                logger.warning(f"Chunk overlap {chunk_overlap} too large, adjusting to {overlap_target}")
             chunk_overlap = overlap_target
 
         return chunk_size, chunk_overlap

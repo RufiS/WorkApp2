@@ -194,12 +194,12 @@ class StorageManager:
         logger.info(f"Index files cleared from {index_dir}")
 
     def _get_file_paths(self, index_dir: str) -> Dict[str, str]:
-        """Get file paths for index components"""
+        """Get file paths for index components - FIXED to match cache system expectations"""
         return {
-            "index": os.path.join(index_dir, "index.faiss"),
-            "temp_index": os.path.join(index_dir, "index.faiss.tmp"),
-            "texts": os.path.join(index_dir, "texts.npy"),
-            "temp_texts": os.path.join(index_dir, "texts.npy.tmp"),
+            "index": os.path.join(index_dir, "faiss_index.bin"),  # Match cache system
+            "temp_index": os.path.join(index_dir, "faiss_index.bin.tmp"),
+            "texts": os.path.join(index_dir, "chunks.json"),  # Match cache system  
+            "temp_texts": os.path.join(index_dir, "chunks.json.tmp"),
             "metadata": os.path.join(index_dir, "metadata.json"),
             "temp_metadata": os.path.join(index_dir, "metadata.json.tmp"),
         }
@@ -226,7 +226,7 @@ class StorageManager:
             raise IOError(f"Failed to save index file: {str(e)}") from e
 
     def _save_texts_file(self, texts: List[Any], temp_path: str, final_path: str) -> None:
-        """Save texts with atomic operation"""
+        """Save texts with atomic operation - FIXED to handle both numpy and JSON formats"""
         try:
             # Validate texts before saving
             if not texts or len(texts) == 0:
@@ -236,48 +236,51 @@ class StorageManager:
             # Ensure directory exists
             os.makedirs(os.path.dirname(temp_path), exist_ok=True)
 
-            # Extract text content from chunk dictionaries if needed
-            text_content = []
-            for item in texts:
-                if isinstance(item, dict) and 'text' in item:
-                    text_content.append(item['text'])
-                elif isinstance(item, str):
-                    text_content.append(item)
-                else:
-                    text_content.append(str(item))
+            # CRITICAL FIX: Determine format based on file extension
+            if final_path.endswith('.json'):
+                # Save as JSON format for chunks.json (cache system expects this)
+                logger.debug(f"Saving {len(texts)} chunks as JSON to {temp_path}")
+                
+                # Preserve full chunk dictionaries for JSON format  
+                chunk_data = []
+                for item in texts:
+                    if isinstance(item, dict):
+                        chunk_data.append(item)  # Keep full dictionary
+                    elif isinstance(item, str):
+                        chunk_data.append({"text": item})  # Wrap string in dict
+                    else:
+                        chunk_data.append({"text": str(item)})  # Convert to string and wrap
+                
+                with open(temp_path, 'w', encoding='utf-8') as f:
+                    json.dump(chunk_data, f, ensure_ascii=False, indent=2)
+                    
+            else:
+                # Save as numpy format for legacy compatibility
+                logger.debug(f"Saving {len(texts)} texts as numpy to {temp_path}")
+                
+                # Extract text content for numpy format
+                text_content = []
+                for item in texts:
+                    if isinstance(item, dict) and 'text' in item:
+                        text_content.append(item['text'])
+                    elif isinstance(item, str):
+                        text_content.append(item)
+                    else:
+                        text_content.append(str(item))
 
-            # Save with robust error handling
-            logger.debug(f"Saving {len(text_content)} texts to {temp_path}")
-
-            # Try numpy save with explicit error checking
-            try:
                 text_array = np.array(text_content, dtype=object)
-                logger.debug(f"Created numpy array with shape: {text_array.shape}")
-
-                # Use explicit file writing for better error handling
                 with open(temp_path, 'wb') as f:
                     np.save(f, text_array)
 
-                # Verify temp file was created and has content
-                if not os.path.exists(temp_path):
-                    raise IOError(f"Temp file was not created: {temp_path}")
+            # Verify temp file was created and has content
+            if not os.path.exists(temp_path):
+                raise IOError(f"Temp file was not created: {temp_path}")
 
-                file_size = os.path.getsize(temp_path)
-                if file_size == 0:
-                    raise IOError(f"Temp file is empty: {temp_path}")
+            file_size = os.path.getsize(temp_path)
+            if file_size == 0:
+                raise IOError(f"Temp file is empty: {temp_path}")
 
-                logger.debug(f"Successfully created temp file: {temp_path} ({file_size} bytes)")
-
-            except Exception as numpy_error:
-                logger.error(f"Numpy save failed: {numpy_error}")
-                # Fallback: save as JSON if numpy fails
-                logger.info("Attempting JSON fallback for text storage")
-                import json
-                with open(temp_path.replace('.npy', '.json'), 'w', encoding='utf-8') as f:
-                    json.dump(text_content, f, ensure_ascii=False, indent=2)
-                # Update temp_path for the JSON file
-                temp_path = temp_path.replace('.npy', '.json')
-                final_path = final_path.replace('.npy', '.json')
+            logger.debug(f"Successfully created temp file: {temp_path} ({file_size} bytes)")
 
             # Atomic move
             os.replace(temp_path, final_path)
@@ -353,20 +356,39 @@ class StorageManager:
             return faiss.IndexFlatL2(self.embedding_dim)
 
     def _load_texts_file(self, texts_path: str) -> List[Any]:
-        """Load texts array"""
+        """Load texts array - FIXED to handle both numpy and JSON formats"""
         try:
-            texts_array = np.load(texts_path, allow_pickle=True)
-            if texts_array is not None and hasattr(texts_array, "tolist"):
-                texts = texts_array.tolist()
-                if texts is None:
-                    texts = []
-                logger.debug(f"Loaded {len(texts)} texts from {texts_path}")
-                return texts
+            # CRITICAL FIX: Determine format based on file extension
+            if texts_path.endswith('.json'):
+                # Load JSON format (chunks.json from cache system)
+                logger.debug(f"Loading chunks as JSON from {texts_path}")
+                with open(texts_path, 'r', encoding='utf-8') as f:
+                    chunk_data = json.load(f)
+                
+                # Ensure we have a list
+                if not isinstance(chunk_data, list):
+                    logger.warning(f"JSON file contains non-list data: {type(chunk_data)}")
+                    return []
+                
+                logger.debug(f"Loaded {len(chunk_data)} chunks from JSON file")
+                return chunk_data
+                
             else:
-                logger.warning(f"Invalid texts array loaded from {texts_path}")
-                return []
+                # Load numpy format (legacy compatibility)
+                logger.debug(f"Loading texts as numpy from {texts_path}")
+                texts_array = np.load(texts_path, allow_pickle=True)
+                if texts_array is not None and hasattr(texts_array, "tolist"):
+                    texts = texts_array.tolist()
+                    if texts is None:
+                        texts = []
+                    logger.debug(f"Loaded {len(texts)} texts from numpy file")
+                    return texts
+                else:
+                    logger.warning(f"Invalid texts array loaded from {texts_path}")
+                    return []
+                    
         except Exception as e:
-            logger.error(f"Error loading texts: {str(e)}")
+            logger.error(f"Error loading texts from {texts_path}: {str(e)}")
             raise ValueError(f"Failed to load texts: {str(e)}")
 
     def get_storage_info(self, index_dir: Optional[str] = None) -> Dict[str, Any]:

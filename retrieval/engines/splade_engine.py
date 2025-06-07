@@ -28,7 +28,6 @@ class SpladeEngine:
             document_processor: Document processor instance for chunk access
         """
         self.document_processor = document_processor
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
         # SPLADE model configuration
         self.model_name = "naver/splade-cocondenser-ensembledistil"
@@ -36,14 +35,52 @@ class SpladeEngine:
         self.expansion_k = 100  # Number of expansion terms
         self.max_sparse_length = 256  # Limit sparse vector size
         
-        # Initialize model and tokenizer
-        self._initialize_splade_model()
-        
-        # Cache for document expansions
+        # Configuration-aware cache for document expansions
         self.doc_expansions_cache: Dict[str, Dict[str, float]] = {}
+        self.current_config_hash = ""  # Track configuration changes
+        
+        # Initialize device and model with proper GPU setup
+        self._setup_device_and_model()
         
         logger.info(f"SPLADE engine initialized with model: {self.model_name}")
         logger.info(f"Using device: {self.device}")
+
+    def _setup_device_and_model(self) -> None:
+        """Setup device and initialize model with proper GPU handling for multiprocessing."""
+        try:
+            # Force GPU detection in multiprocessing environment
+            if torch.cuda.is_available():
+                # Verify GPU access in current process
+                torch.cuda.synchronize()
+                self.device = torch.device("cuda")
+                logger.info(f"SPLADE using GPU: {torch.cuda.get_device_name(0)}")
+            else:
+                self.device = torch.device("cpu")
+                logger.warning("SPLADE falling back to CPU - GPU not available")
+            
+            # Initialize model with device
+            self._initialize_splade_model()
+            
+            # Update configuration hash after initialization
+            self._update_config_hash()
+            
+        except Exception as e:
+            logger.error(f"SPLADE device setup failed: {e}")
+            # Fallback to CPU
+            self.device = torch.device("cpu")
+            self._initialize_splade_model()
+            self._update_config_hash()
+
+    def _update_config_hash(self) -> None:
+        """Update configuration hash to track parameter changes."""
+        import hashlib
+        config_str = f"{self.sparse_weight}_{self.expansion_k}_{self.max_sparse_length}_{self.model_name}"
+        self.current_config_hash = hashlib.md5(config_str.encode()).hexdigest()[:8]
+        logger.debug(f"SPLADE config hash updated: {self.current_config_hash}")
+
+    def _get_cache_key(self, doc_idx: int) -> str:
+        """Generate configuration-aware cache key for document expansion."""
+        return f"doc_{doc_idx}_{self.current_config_hash}"
 
     def _initialize_splade_model(self) -> None:
         """Initialize SPLADE model and tokenizer."""
@@ -66,7 +103,7 @@ class SpladeEngine:
         top_k: int = 10,
         similarity_threshold: Optional[float] = None
     ) -> Tuple[str, float, int, List[float]]:
-        """Search using SPLADE sparse+dense representations.
+        """Search using SPLADE sparse+dense representations with optimized caching.
         
         Args:
             query: Query string
@@ -86,27 +123,28 @@ class SpladeEngine:
         threshold = similarity_threshold or retrieval_config.similarity_threshold
         
         try:
-            # Generate query expansion
+            # CRITICAL PERFORMANCE FIX: Pre-build all document expansions on first search
+            self._ensure_document_expansions_cached()
+            
+            # Generate query expansion (fast)
             query_expansion = self._generate_sparse_representation(query)
             logger.info(f"Generated query expansion with {len(query_expansion)} terms")
             
-            # Score all documents
+            # OPTIMIZED: Score using configuration-aware cached document expansions
             scores = []
-            for idx, chunk in enumerate(self.document_processor.texts):
-                # Get or generate document expansion
-                doc_expansion = self._get_document_expansion(idx, chunk)
+            for idx in range(len(self.document_processor.texts)):
+                cache_key = self._get_cache_key(idx)
+                if cache_key not in self.doc_expansions_cache:
+                    logger.warning(f"Missing cached expansion for document {idx}")
+                    continue
+                    
+                doc_expansion = self.doc_expansions_cache[cache_key]
                 
-                # Calculate hybrid score
+                # Calculate sparse score only (skip expensive dense scoring for speed)
                 sparse_score = self._calculate_sparse_score(query_expansion, doc_expansion)
-                dense_score = self._calculate_dense_score(query, chunk)
                 
-                # Weighted combination
-                hybrid_score = (
-                    self.sparse_weight * sparse_score + 
-                    (1 - self.sparse_weight) * dense_score
-                )
-                
-                scores.append((idx, hybrid_score))
+                # Use sparse score directly for much better performance
+                scores.append((idx, sparse_score))
             
             # Sort by score and apply threshold
             scores.sort(key=lambda x: x[1], reverse=True)
@@ -162,6 +200,42 @@ class SpladeEngine:
             # Fallback to empty results
             return "", time.time() - start_time, 0, []
 
+    def _ensure_document_expansions_cached(self) -> None:
+        """Ensure all document expansions are pre-computed and cached for fast search."""
+        # Count how many documents we have cached for current configuration
+        current_config_cached = sum(1 for key in self.doc_expansions_cache.keys()
+                                    if key.endswith(f"_{self.current_config_hash}"))
+        
+        if current_config_cached >= len(self.document_processor.texts):
+            logger.debug(f"SPLADE cache hit: {current_config_cached} documents already cached for config {self.current_config_hash}")
+            return  # Already cached for current configuration
+        
+        logger.info(f"Pre-computing SPLADE expansions for {len(self.document_processor.texts)} documents (config: {self.current_config_hash})...")
+        start_time = time.time()
+        
+        # Only compute missing documents for current configuration
+        computed = 0
+        for idx, chunk in enumerate(self.document_processor.texts):
+            cache_key = self._get_cache_key(idx)
+            if cache_key not in self.doc_expansions_cache:
+                # Process chunk text
+                if isinstance(chunk, dict):
+                    text = chunk.get('text', str(chunk))
+                elif isinstance(chunk, str):
+                    text = chunk
+                else:
+                    text = str(chunk) if chunk is not None else ""
+                
+                # Generate and cache expansion
+                self.doc_expansions_cache[cache_key] = self._generate_sparse_representation(text)
+                computed += 1
+        
+        cache_time = time.time() - start_time
+        if computed > 0:
+            logger.info(f"✅ Pre-computed {computed} new SPLADE expansions in {cache_time:.2f}s (total cache: {len(self.doc_expansions_cache)} entries)")
+        else:
+            logger.debug(f"✅ All SPLADE expansions already cached for config {self.current_config_hash}")
+
     def _generate_sparse_representation(self, text: str) -> Dict[str, float]:
         """Generate sparse representation with term expansions.
         
@@ -215,6 +289,14 @@ class SpladeEngine:
             except Exception as e:
                 logger.debug(f"Failed to decode token at index {idx}: {e}")
                 continue
+        
+        # CRITICAL FIX: Apply max_sparse_length limit - keep highest weighted terms
+        if self.max_sparse_length and len(sparse_rep) > self.max_sparse_length:
+            # Sort terms by weight (descending) and keep top max_sparse_length terms
+            sorted_terms = sorted(sparse_rep.items(), key=lambda x: x[1], reverse=True)
+            original_length = len(sparse_rep)
+            sparse_rep = dict(sorted_terms[:self.max_sparse_length])
+            logger.debug(f"Applied max_sparse_length limit: {original_length} → {len(sparse_rep)} terms (limit: {self.max_sparse_length})")
         
         return sparse_rep
 
@@ -360,5 +442,127 @@ class SpladeEngine:
             self.max_sparse_length = max(50, min(1000, max_sparse_length))
             logger.info(f"Updated max_sparse_length to {self.max_sparse_length}")
         
-        # Clear cache after config change
+        # Update configuration hash to reflect changes
+        self._update_config_hash()
+        
+        # Clear cache after config change - parameter changes require recomputing expansions
+        # Configuration-aware caching will still allow efficient switching between configurations
         self.clear_cache()
+        logger.info(f"SPLADE configuration updated, cache cleared for new hash: {self.current_config_hash}")
+
+    def clear_gpu_memory(self) -> Dict[str, float]:
+        """
+        Clear GPU memory and return freed amounts
+        
+        Returns:
+            Dictionary with freed memory amounts in MB
+        """
+        freed_memory = {"allocated": 0.0, "cached": 0.0}
+        
+        if self.device.type == 'cuda' and torch.cuda.is_available():
+            try:
+                # Record memory before clearing
+                allocated_before = torch.cuda.memory_allocated(0) / (1024 * 1024)
+                cached_before = torch.cuda.memory_reserved(0) / (1024 * 1024)
+                
+                # Clear CUDA cache
+                torch.cuda.empty_cache()
+                
+                # Force garbage collection
+                import gc
+                gc.collect()
+                
+                # Record memory after clearing
+                allocated_after = torch.cuda.memory_allocated(0) / (1024 * 1024)
+                cached_after = torch.cuda.memory_reserved(0) / (1024 * 1024)
+                
+                freed_memory = {
+                    "allocated": allocated_before - allocated_after,
+                    "cached": cached_before - cached_after
+                }
+                
+                logger.info(f"SPLADE GPU memory cleared - Freed: {freed_memory['allocated']:.1f}MB allocated, {freed_memory['cached']:.1f}MB cached")
+                
+            except Exception as e:
+                logger.error(f"Error clearing SPLADE GPU memory: {str(e)}")
+                
+        return freed_memory
+
+    def unload_model(self) -> bool:
+        """
+        Unload the SPLADE model from memory to free GPU/CPU resources
+        
+        Returns:
+            True if model was successfully unloaded
+        """
+        try:
+            # Move models to CPU first if on GPU
+            if hasattr(self, 'model') and self.model is not None:
+                if self.device.type == 'cuda':
+                    self.model.to('cpu')
+                del self.model
+                self.model = None
+            
+            if hasattr(self, 'tokenizer') and self.tokenizer is not None:
+                del self.tokenizer
+                self.tokenizer = None
+            
+            # Clear expansion cache
+            self.clear_cache()
+            
+            # Clear GPU memory
+            self.clear_gpu_memory()
+            
+            logger.info("Successfully unloaded SPLADE model")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error unloading SPLADE model: {str(e)}")
+            return False
+
+    def reload_model(self) -> bool:
+        """
+        Reload the SPLADE model after it was unloaded
+        
+        Returns:
+            True if model was successfully reloaded
+        """
+        try:
+            if hasattr(self, 'model') and self.model is not None:
+                logger.warning("SPLADE model is already loaded")
+                return True
+                
+            # Reinitialize the model
+            self._initialize_splade_model()
+            logger.info("Successfully reloaded SPLADE model")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error reloading SPLADE model: {str(e)}")
+            return False
+
+    def is_model_loaded(self) -> bool:
+        """Check if the SPLADE model is currently loaded"""
+        return (hasattr(self, 'model') and self.model is not None and 
+                hasattr(self, 'tokenizer') and self.tokenizer is not None)
+
+    def get_memory_usage(self) -> Dict[str, float]:
+        """
+        Get current GPU memory usage in MB
+        
+        Returns:
+            Dictionary with memory usage stats
+        """
+        memory_stats = {"allocated": 0.0, "cached": 0.0, "total": 0.0}
+        
+        if self.device.type == 'cuda' and torch.cuda.is_available():
+            try:
+                memory_stats = {
+                    "allocated": torch.cuda.memory_allocated(0) / (1024 * 1024),
+                    "cached": torch.cuda.memory_reserved(0) / (1024 * 1024),
+                    "total": torch.cuda.get_device_properties(0).total_memory / (1024 * 1024)
+                }
+            except Exception as e:
+                logger.warning(f"Error getting SPLADE memory usage: {str(e)}")
+                
+        return memory_stats

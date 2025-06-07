@@ -159,7 +159,7 @@ class EmbeddingService:
     
     def embed_query(self, query: str) -> np.ndarray:
         """
-        Embed a single query string
+        Embed a single query string with intelligent GPU memory management
 
         Args:
             query: Query string to embed
@@ -175,6 +175,18 @@ class EmbeddingService:
             raise ValueError(f"Query must be a non-empty string, got {type(query)}")
 
         try:
+            # CRITICAL FIX: Check GPU memory pressure before embedding
+            if self.device == 'cuda' and torch.cuda.is_available():
+                if not self._ensure_sufficient_gpu_memory():
+                    # If GPU memory is constrained, try aggressive cleanup
+                    logger.warning("GPU memory pressure detected, attempting cleanup before embedding")
+                    self._aggressive_gpu_cleanup()
+                    
+                    # Check again after cleanup
+                    if not self._ensure_sufficient_gpu_memory():
+                        # Last resort: temporarily move model to CPU for this query
+                        return self._embed_query_cpu_fallback(query)
+
             start_time = time.time()
             embedding = self.model.encode([query])
             embedding_time = time.time() - start_time
@@ -190,9 +202,163 @@ class EmbeddingService:
 
             return embedding
 
+        except torch.cuda.OutOfMemoryError as e:
+            logger.error(f"CUDA out of memory during query embedding: {str(e)}")
+            # Try CPU fallback for this query
+            return self._embed_query_cpu_fallback(query)
         except Exception as e:
             logger.error(f"Error embedding query: {str(e)}")
             raise ValueError(f"Failed to embed query: {str(e)}")
+    
+    def _ensure_sufficient_gpu_memory(self, required_mb: float = 512.0) -> bool:
+        """
+        Check if there's sufficient GPU memory available for embedding operations
+        
+        Args:
+            required_mb: Minimum required memory in MB
+            
+        Returns:
+            True if sufficient memory is available
+        """
+        if not torch.cuda.is_available():
+            return True  # CPU mode, always sufficient
+            
+        try:
+            # Get current memory usage
+            allocated = torch.cuda.memory_allocated(0) / (1024 * 1024)  # MB
+            reserved = torch.cuda.memory_reserved(0) / (1024 * 1024)   # MB
+            total = torch.cuda.get_device_properties(0).total_memory / (1024 * 1024)  # MB
+            
+            # Calculate available memory (use reserved as it's more accurate for fragmentation)
+            available = total - reserved
+            
+            # Check if we have enough memory
+            sufficient = available >= required_mb
+            
+            if not sufficient:
+                logger.warning(f"Insufficient GPU memory: {available:.1f}MB available < {required_mb:.1f}MB required")
+                logger.warning(f"Memory breakdown: {allocated:.1f}MB allocated, {reserved:.1f}MB reserved, {total:.1f}MB total")
+            
+            return sufficient
+            
+        except Exception as e:
+            logger.error(f"Error checking GPU memory: {e}")
+            return False  # Assume insufficient if we can't check
+    
+    def _aggressive_gpu_cleanup(self) -> Dict[str, float]:
+        """
+        Perform aggressive GPU memory cleanup to free space for embedding operations
+        
+        Returns:
+            Dictionary with freed memory amounts in MB
+        """
+        if not torch.cuda.is_available():
+            return {"allocated": 0.0, "cached": 0.0}
+            
+        try:
+            # Record initial memory state
+            initial_allocated = torch.cuda.memory_allocated(0) / (1024 * 1024)
+            initial_reserved = torch.cuda.memory_reserved(0) / (1024 * 1024)
+            
+            logger.info(f"Starting aggressive GPU cleanup: {initial_allocated:.1f}MB allocated, {initial_reserved:.1f}MB reserved")
+            
+            # Stage 1: Clear CUDA cache multiple times
+            for i in range(3):
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+                
+                # Force garbage collection between cache clears
+                import gc
+                gc.collect()
+            
+            # Stage 2: Try to trigger defragmentation with small tensor allocation
+            try:
+                # Allocate and immediately free a small tensor to trigger defragmentation
+                test_tensor = torch.empty(1024, dtype=torch.float32, device='cuda')
+                del test_tensor
+                torch.cuda.empty_cache()
+            except Exception:
+                pass  # If this fails, continue with cleanup
+            
+            # Stage 3: Final cleanup round
+            for _ in range(2):
+                torch.cuda.empty_cache()
+                import gc
+                gc.collect()
+            
+            # Calculate freed memory
+            final_allocated = torch.cuda.memory_allocated(0) / (1024 * 1024)
+            final_reserved = torch.cuda.memory_reserved(0) / (1024 * 1024)
+            
+            freed_memory = {
+                "allocated": initial_allocated - final_allocated,
+                "cached": initial_reserved - final_reserved
+            }
+            
+            logger.info(f"Aggressive GPU cleanup complete: Freed {freed_memory['allocated']:.1f}MB allocated, {freed_memory['cached']:.1f}MB cached")
+            logger.info(f"Current GPU state: {final_allocated:.1f}MB allocated, {final_reserved:.1f}MB reserved")
+            
+            return freed_memory
+            
+        except Exception as e:
+            logger.error(f"Error during aggressive GPU cleanup: {str(e)}")
+            return {"allocated": 0.0, "cached": 0.0}
+    
+    def _embed_query_cpu_fallback(self, query: str) -> np.ndarray:
+        """
+        Fallback method to embed query on CPU when GPU is out of memory
+        
+        Args:
+            query: Query string to embed
+            
+        Returns:
+            NumPy array of query embedding
+        """
+        try:
+            logger.warning(f"Using CPU fallback for query embedding due to GPU memory constraints")
+            
+            # Temporarily move model to CPU
+            original_device = None
+            if hasattr(self.model, 'device'):
+                original_device = self.model.device
+            
+            if hasattr(self.model, 'to'):
+                self.model.to('cpu')
+                logger.info("Temporarily moved embedding model to CPU")
+            
+            try:
+                # Embed on CPU
+                start_time = time.time()
+                embedding = self.model.encode([query])
+                embedding_time = time.time() - start_time
+                
+                # Track embedding time (note it's CPU time)
+                self.embedding_times.append(embedding_time)
+                
+                logger.info(f"Query embedded on CPU in {embedding_time:.3f}s")
+                
+                return embedding
+                
+            finally:
+                # Move model back to original device if possible
+                if original_device is not None and hasattr(self.model, 'to'):
+                    try:
+                        # Only move back to GPU if we have sufficient memory
+                        if str(original_device).startswith('cuda'):
+                            if self._ensure_sufficient_gpu_memory(required_mb=1024.0):  # Require more memory for model transfer
+                                self.model.to(original_device)
+                                logger.info("Moved embedding model back to GPU")
+                            else:
+                                logger.warning("Keeping embedding model on CPU due to insufficient GPU memory")
+                                self.device = 'cpu'  # Update device tracking
+                        else:
+                            self.model.to(original_device)
+                    except Exception as e:
+                        logger.warning(f"Could not move model back to {original_device}: {e}")
+                        
+        except Exception as e:
+            logger.error(f"CPU fallback embedding failed: {str(e)}")
+            raise ValueError(f"Failed to embed query with CPU fallback: {str(e)}")
 
     def _extract_text_strings(self, texts: Sequence[Union[Dict[str, Any], str]]) -> List[str]:
         """
@@ -323,11 +489,215 @@ class EmbeddingService:
 
         return metrics
 
+    def clear_gpu_memory(self) -> Dict[str, float]:
+        """
+        Clear GPU memory and return freed amounts
+        
+        Returns:
+            Dictionary with freed memory amounts in MB
+        """
+        freed_memory = {"allocated": 0.0, "cached": 0.0}
+        
+        if self.device == 'cuda' and torch.cuda.is_available():
+            try:
+                # Record memory before clearing
+                allocated_before = torch.cuda.memory_allocated(0) / (1024 * 1024)
+                cached_before = torch.cuda.memory_reserved(0) / (1024 * 1024)
+                
+                # Clear CUDA cache
+                torch.cuda.empty_cache()
+                
+                # Force garbage collection
+                import gc
+                gc.collect()
+                
+                # Record memory after clearing
+                allocated_after = torch.cuda.memory_allocated(0) / (1024 * 1024)
+                cached_after = torch.cuda.memory_reserved(0) / (1024 * 1024)
+                
+                freed_memory = {
+                    "allocated": allocated_before - allocated_after,
+                    "cached": cached_before - cached_after
+                }
+                
+                logger.info(f"GPU memory cleared - Freed: {freed_memory['allocated']:.1f}MB allocated, {freed_memory['cached']:.1f}MB cached")
+                
+            except Exception as e:
+                logger.error(f"Error clearing GPU memory: {str(e)}")
+                
+        return freed_memory
+
+    def unload_model(self) -> bool:
+        """
+        Unload the embedding model from memory to free GPU/CPU resources
+        
+        Returns:
+            True if model was successfully unloaded
+        """
+        try:
+            if hasattr(self, 'model') and self.model is not None:
+                # Move model to CPU first if on GPU
+                if self.device == 'cuda' and hasattr(self.model, 'to'):
+                    self.model.to('cpu')
+                
+                # Delete the model
+                del self.model
+                self.model = None
+                
+                # Clear GPU memory
+                self.clear_gpu_memory()
+                
+                logger.info(f"Successfully unloaded embedding model: {self.model_name}")
+                return True
+            else:
+                logger.warning("No model to unload")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error unloading model: {str(e)}")
+            return False
+
+    def reload_model(self) -> bool:
+        """
+        Reload the embedding model after it was unloaded
+        
+        Returns:
+            True if model was successfully reloaded
+        """
+        try:
+            if hasattr(self, 'model') and self.model is not None:
+                logger.warning("Model is already loaded")
+                return True
+                
+            # Reinitialize the model
+            logger.info(f"Reloading SentenceTransformer model '{self.model_name}' on device: {self.device}")
+            self.model = SentenceTransformer(self.model_name, device=self.device)
+            
+            logger.info(f"Successfully reloaded embedding model: {self.model_name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error reloading model: {str(e)}")
+            return False
+
+    def is_model_loaded(self) -> bool:
+        """Check if the embedding model is currently loaded"""
+        return hasattr(self, 'model') and self.model is not None
+
     def clear_metrics(self) -> None:
         """Clear embedding metrics"""
         self.embedding_times.clear()
         logger.info("Embedding metrics cleared")
 
 
-# Global instance for shared use across the application
-embedding_service = EmbeddingService()
+# Global instance cache for different embedding models - EVALUATION FIX
+_embedding_service_cache = {}
+
+def get_embedding_service(force_cpu: bool = False, model_name: Optional[str] = None) -> EmbeddingService:
+    """Get embedding service instance with model-specific caching for evaluation.
+    
+    Args:
+        force_cpu: Force CPU usage for worker processes to prevent VRAM exhaustion
+        model_name: Specific model name to use (None for default)
+        
+    Returns:
+        EmbeddingService instance for the specified model
+    """
+    global _embedding_service_cache
+    
+    # EVALUATION FIX: Use model-specific caching instead of single global instance
+    model_name = model_name or retrieval_config.embedding_model
+    cache_key = f"{model_name}_{force_cpu}"
+    
+    if cache_key not in _embedding_service_cache:
+        import os
+        
+        logger.info(f"Creating new embedding service for model: {model_name}")
+        
+        # CRITICAL FIX: Force CPU for worker processes to prevent CUDA OOM
+        if force_cpu or 'PYTEST_CURRENT_TEST' in os.environ or 'MULTIPROCESSING_WORKER' in os.environ:
+            # Temporarily override config to force CPU
+            original_gpu_setting = performance_config.use_gpu_for_faiss
+            performance_config.use_gpu_for_faiss = False
+            
+            try:
+                _embedding_service_cache[cache_key] = EmbeddingService(model_name)
+                logger.info(f"Embedding service initialized on CPU for worker PID {os.getpid()}, model: {model_name}")
+            finally:
+                # Restore original setting
+                performance_config.use_gpu_for_faiss = original_gpu_setting
+        else:
+            _embedding_service_cache[cache_key] = EmbeddingService(model_name)
+            logger.info(f"Embedding service initialized on GPU for main process PID {os.getpid()}, model: {model_name}")
+    else:
+        logger.debug(f"Using cached embedding service for model: {model_name}")
+    
+    return _embedding_service_cache[cache_key]
+
+def clear_embedding_service_cache():
+    """Clear the embedding service cache - useful for testing different models."""
+    global _embedding_service_cache
+    
+    # Unload all models and clear GPU memory before clearing cache
+    total_freed = {"allocated": 0.0, "cached": 0.0}
+    for cache_key, service in _embedding_service_cache.items():
+        try:
+            freed = service.clear_gpu_memory()
+            total_freed["allocated"] += freed["allocated"]
+            total_freed["cached"] += freed["cached"]
+            service.unload_model()
+        except Exception as e:
+            logger.warning(f"Error cleaning up service {cache_key}: {str(e)}")
+    
+    _embedding_service_cache.clear()
+    
+    # Final GPU memory clear
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        import gc
+        gc.collect()
+    
+    logger.info(f"Embedding service cache cleared - Total freed: {total_freed['allocated']:.1f}MB allocated, {total_freed['cached']:.1f}MB cached")
+
+
+def force_gpu_memory_cleanup():
+    """Force aggressive GPU memory cleanup across all services"""
+    try:
+        # Clear embedding service cache
+        clear_embedding_service_cache()
+        
+        # Force multiple rounds of garbage collection
+        import gc
+        for _ in range(3):
+            gc.collect()
+        
+        # Clear CUDA cache multiple times
+        if torch.cuda.is_available():
+            for _ in range(3):
+                torch.cuda.empty_cache()
+            
+            # Get final memory state
+            allocated = torch.cuda.memory_allocated(0) / (1024 * 1024)
+            cached = torch.cuda.memory_reserved(0) / (1024 * 1024)
+            
+            logger.info(f"Aggressive GPU cleanup complete - Remaining: {allocated:.1f}MB allocated, {cached:.1f}MB cached")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error during aggressive GPU cleanup: {str(e)}")
+        return False
+
+# Backward compatibility property
+class EmbeddingServiceProxy:
+    """Proxy to maintain backward compatibility while implementing lazy loading."""
+    
+    def __getattr__(self, name):
+        service = get_embedding_service()
+        return getattr(service, name)
+    
+    def __call__(self, *args, **kwargs):
+        service = get_embedding_service()
+        return service(*args, **kwargs)
+
+embedding_service = EmbeddingServiceProxy()

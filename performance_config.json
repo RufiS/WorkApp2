@@ -11,5 +11,13 @@
   "enable_reranking": false,
   "enable_keyword_fallback": true,
   "log_query_metrics": true,
-  "log_zero_hit_queries": true
+  "log_zero_hit_queries": true,
+  "gpu_resource_management": {
+    "ollama_vram_reservation_mb": 12288,
+    "max_workers_per_gb": 0.25,
+    "min_vram_per_worker_gb": 3.0,
+    "enable_ollama_detection": true,
+    "fallback_to_cpu_when_constrained": true,
+    "safety_buffer_mb": 1024
+  }
 }

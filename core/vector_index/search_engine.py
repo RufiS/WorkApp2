@@ -171,7 +171,7 @@ class SearchEngine:
         top_k: int
     ) -> List[Dict[str, Any]]:
         """
-        Perform the actual FAISS search and format results
+        Perform the actual FAISS search and format results with GPU optimization
 
         Args:
             query_embedding: Embedded query vector
@@ -187,12 +187,23 @@ class SearchEngine:
         if safe_top_k < top_k:
             logger.info(f"Adjusted top_k from {top_k} to {safe_top_k} based on available chunks")
 
-        # Perform FAISS search
+        # GPU OPTIMIZATION: Prepare query embedding for optimal FAISS GPU performance
         try:
-            scores, indices = index.search(query_embedding, safe_top_k)
+            # Ensure embedding is in the right format for FAISS GPU operations
+            processed_embedding = self._prepare_gpu_embedding(query_embedding, index)
+            
+            # Perform FAISS search with GPU-optimized embedding
+            scores, indices = index.search(processed_embedding, safe_top_k)
+            
         except Exception as e:
             logger.error(f"Error during FAISS search: {str(e)}")
-            raise ValueError(f"Search operation failed: {str(e)}")
+            # Fallback to original embedding format
+            try:
+                logger.warning("Attempting fallback search with original embedding format")
+                scores, indices = index.search(query_embedding, safe_top_k)
+            except Exception as fallback_error:
+                logger.error(f"Fallback search also failed: {str(fallback_error)}")
+                raise ValueError(f"Search operation failed: {str(e)}, fallback: {str(fallback_error)}")
 
         # Validate search results
         if indices.shape[0] == 0 or scores.shape[0] == 0:
@@ -206,6 +217,52 @@ class SearchEngine:
 
         # Format and return results
         return self._format_search_results(scores[0], indices[0], texts)
+
+    def _prepare_gpu_embedding(self, query_embedding: np.ndarray, index: faiss.Index) -> np.ndarray:
+        """
+        Prepare query embedding for optimal GPU FAISS performance
+        
+        Args:
+            query_embedding: Raw query embedding from embedding service
+            index: FAISS index to search
+            
+        Returns:
+            GPU-optimized embedding array
+        """
+        try:
+            # Check if index is on GPU
+            is_gpu_index = hasattr(index, "getDevice") and index.getDevice() >= 0
+            
+            if is_gpu_index:
+                logger.debug("Optimizing embedding for GPU FAISS index")
+                
+                # Ensure embedding is float32 (FAISS GPU requirement)
+                if query_embedding.dtype != np.float32:
+                    logger.debug(f"Converting embedding from {query_embedding.dtype} to float32")
+                    query_embedding = query_embedding.astype(np.float32)
+                
+                # Ensure embedding is C-contiguous (optimal for GPU operations)
+                if not query_embedding.flags['C_CONTIGUOUS']:
+                    logger.debug("Making embedding C-contiguous for GPU optimization")
+                    query_embedding = np.ascontiguousarray(query_embedding)
+                
+                # Force synchronization with GPU operations if using CUDA embeddings
+                try:
+                    import torch
+                    if torch.cuda.is_available():
+                        torch.cuda.synchronize()
+                        logger.debug("CUDA synchronized for FAISS GPU search")
+                except ImportError:
+                    pass  # torch not available, continue
+                
+            else:
+                logger.debug("Index is on CPU, using standard embedding format")
+            
+            return query_embedding
+            
+        except Exception as e:
+            logger.warning(f"Error optimizing embedding for GPU: {str(e)}, using original format")
+            return query_embedding
 
     def _format_search_results(
         self,
